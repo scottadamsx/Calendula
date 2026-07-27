@@ -1,6 +1,7 @@
 /** Shared solver types (spec §6, §7.1). Mirrors the DB schema in §5. */
 
 export type Hardness = "hard" | "soft" | "tentative";
+export type EnergyLabel = "deep" | "admin" | "social" | "physical" | "creative";
 
 export interface Range {
   start: Date;

@@ -38,22 +38,27 @@ blocked-task: <phase/task>
   carries user_id" rule. The migration (`supabase/migrations/20260727000000_init.sql`)
   adds it so the standard owner RLS policy covers the table. Flagged, not silently
   patched — revisit if the spec is amended.
-- **Open, blocks Phase 1**: §6's grid engine reads only from `placements`
-  ("no other layer reads `placements` directly" — D11), and step 3 of construction
-  says "load overlapping placements, mark blocks by hardness." But nothing in §5 or
-  §13 says how a `fixed_blocks` row (especially a recurring one, via `rrule`) becomes
-  one or more rows in `placements`. §8.3 gives this explicitly for activity holds
-  (insert the hold, then a hard `placements` row) — the seed data
-  (`supabase/seed.sql`) follows that pattern for the camping hold, but does *not*
-  mirror the seeded `fixed_blocks` rows into `placements`, because no ingestion rule
-  says how to expand an RRULE into concrete instances. Resolve before implementing
-  `buildGrid()`: is this an ingestion-time job (on fixed_block create/update, expand
-  and upsert placements rows for the horizon), or does the grid engine itself expand
-  RRULEs on read?
-  recommendation: ingestion-time expansion, upserted per horizon window on a nightly
-  cron plus on create/update — keeps `buildGrid()` a pure read, matches D2's
-  full-horizon-recompute philosophy, and avoids RRULE-parsing inside the hot path.
-  blocked-task: Phase 1 — `buildGrid()`.
+- **Resolved for Phase 1** (was open, blocked `buildGrid()`): nothing in §5/§13 said
+  how a `fixed_blocks` row, especially a recurring one via `rrule`, becomes rows in
+  `placements` — the only table the grid engine reads (D11). Went with the logged
+  recommendation: ingestion-time expansion, not expansion inside `buildGrid()` itself.
+  `syncFixedBlockPlacements` (`src/lib/scheduler/fixedBlocks.ts`) expands each
+  `fixed_blocks` row for a horizon window via `expandFixedBlock` and upserts hard
+  `placements` rows, keyed on `(user_id, source_type, source_id, starts_at)` — a
+  unique index added in `supabase/migrations/20260727010000_placements_upsert_key.sql`
+  — so re-running it is idempotent. Not yet wired to run automatically (no cron or
+  on-create/update trigger calls it yet); that's the next open item, not this one.
+
+## RRULE expansion — the one non-obvious piece of Phase 1
+
+`rrule`'s own BYDAY/FREQ math is computed against the UTC instant of `dtstart`, which
+drifts a recurring local wall-clock time (e.g. "9am Monday") by the DST delta once a
+horizon crosses a boundary. `expandFixedBlock` works around this with a "floating
+clock" trick — building the rule against a UTC `Date` whose Y-M-D-H-M fields are
+copied from the local wall clock, then reinterpreting each result back as local time
+in the real zone. Covered by `src/lib/scheduler/fixedBlocks.test.ts` (crosses the
+2026-03-08 America/St_Johns spring-forward). Don't "simplify" this to a plain
+`rrule` call against the real UTC `dtstart` — that's the bug this works around.
 
 ## Your last task, always
 

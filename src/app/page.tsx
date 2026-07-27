@@ -4,8 +4,8 @@ import { Badge } from "@/components/ui/Badge";
 
 const PHASES = [
   { name: "Phase 0 — Foundation", status: "done" as const, detail: "Schema, RLS, dispatcher stub, brand system, house style." },
-  { name: "Phase 1 — Grid, read-only", status: "next" as const, detail: "buildGrid, week view rendering hard placements." },
-  { name: "Phase 2 — Task solver", status: "later" as const, detail: "Least-slack-time solver, movement penalty, freeze window." },
+  { name: "Phase 1 — Grid, read-only", status: "done" as const, detail: "buildGrid, week view rendering hard placements, DST-correct." },
+  { name: "Phase 2 — Task solver", status: "next" as const, detail: "Least-slack-time solver, movement penalty, freeze window." },
   { name: "Phase 3 — Habits", status: "later" as const, detail: "Second-pass placement, spacing constraints." },
   { name: "Phase 4 — Meeting offers", status: "later" as const, detail: "Displacement cost, tentative holds, expiry cron." },
   { name: "Phase 4.5 — Reminders core", status: "later" as const, detail: "Urgency, receptivity, attention budget." },
@@ -29,7 +29,7 @@ export default function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="This is Phase 0: schema, row-level security, the solver dispatch stub, and the brand and house style system. No scheduling logic exists yet — the week view, task solver, and advisor are all Phase 1 and later."
+        lead="Phases 0 and 1 are done: schema, row-level security, the grid engine, and a read-only week view. No auto-scheduling exists yet — the task solver, habits, and advisor are Phase 2 and later."
       />
 
       <Panel>
