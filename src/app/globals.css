@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/*
+ * Token architecture follows the house style (housestyle-ui.md): fixed role
+ * names, product supplies the values. One deliberate override — the radius
+ * ramp. Calendula's brand spec (§14.7, decision D26) locks square corners on
+ * any single-sided-accent element and 6px/10-12px elsewhere; this replaces
+ * the generic 8/12/16/20 ramp rather than layering on top of it. Everything
+ * else below (control heights, spacing grid, button variants, elevation,
+ * focus, motion) is the house style unchanged, bound to Calendula's palette.
+ */
+
+@theme {
+  /* Roles */
+  --color-paper: #fdf6ec;    /* Petal */
+  --color-surface: #fffcf7;  /* raised card surface, spec §14.3 */
+  --color-ink: #4a2c14;      /* Disc */
+  --color-ink-soft: #8a6b4f; /* supporting text, spec §14.3 */
+  --color-ink-faint: #a88b6e; /* muted metadata — Calendula's second muted
+                                  tier (timestamps, secondary metadata);
+                                  documented extension over the single-tier
+                                  house style default, see CLAUDE.md */
+  --color-line: #e8d9c4;     /* Bract — the only border colour */
+
+  /* Brand ramp — derived from Ray #F0872D */
+  --color-brand-50: #fef4ec;
+  --color-brand-100: #fce7d4;
+  --color-brand-200: #f8ceaa;
+  --color-brand-400: #f4a867; /* selected-item border exception, §8 */
+  --color-brand-600: #f0872d; /* Ray — fill */
+  --color-brand-700: #cc630a; /* hover */
+
+  /* Danger — Ember, spec's own "overload / unplaceable / at-risk / errors" */
+  --color-danger: #c25a12;
+  --color-danger-dark: #8c400b;
+
+  /* Categorical accents — state encoding only (§14.4), never for actions */
+  --color-accent-habit: #5f7a4a;    /* Leaf */
+  --color-accent-reminder: #f5c242; /* Pollen */
+
+  /* Fonts */
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Radius — Calendula override (§14.7 / D26), not the house-style ramp */
+  --radius-sm: 6px;  /* default control corner */
+  --radius-md: 10px; /* tight cards, list rows */
+  --radius-lg: 12px; /* panels, modals, the standard card */
+  --radius-full: 999px; /* pills, badges, avatars — only these */
+
+  /* Spacing: Tailwind's default 4px-based scale already covers the house
+     style's allowed set (4/8/12/16/20/24/32/40/48/64 → p-1/2/3/4/5/6/8/10/12/16).
+     No override needed; the allowed-values rule is enforced by convention,
+     documented in CLAUDE.md. */
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-paper: #211408;
+    --color-surface: #2b1c0d;
+    --color-ink: #f6ead9;
+    --color-ink-soft: #c9a988;
+    --color-ink-faint: #9c8267;
+    --color-line: #3d2a17;
+
+    --color-brand-50: #3a2411;
+    --color-brand-100: #4a2d12;
+    --color-brand-200: #6b3d13;
+    --color-brand-400: #d98a3f;
+    --color-brand-600: #f0872d;
+    --color-brand-700: #f8a55c;
+
+    --color-danger: #e0742a;
+    --color-danger-dark: #f3966a;
+
+    --color-accent-habit: #86a86b;
+    --color-accent-reminder: #f5c242;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Focus is global and never removed (housestyle-ui.md §8) */
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-brand-600) 28%, transparent);
+  outline-offset: 2px;
+}
+
+/* Times, durations, data — always mono, always tabular (spec §14.5) */
+.font-data {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
