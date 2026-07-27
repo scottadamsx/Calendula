@@ -39,6 +39,7 @@ export default function SettingsPage() {
             <EnvStatus name="NEXT_PUBLIC_SUPABASE_URL" />
             <EnvStatus name="NEXT_PUBLIC_SUPABASE_ANON_KEY" />
             <EnvStatus name="SUPABASE_SERVICE_ROLE_KEY" />
+            <EnvStatus name="SUPABASE_DB_URL" />
             <EnvStatus name="ANTHROPIC_API_KEY" />
           </ul>
         </Panel>
