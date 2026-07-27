@@ -122,5 +122,12 @@ export async function connectSupabase(
 }
 
 function isMissingTableError(message: string): boolean {
-  return /relation .* does not exist/i.test(message);
+  // Two different wordings for the same thing: raw Postgres (via a direct pg
+  // connection) says "relation ... does not exist"; Supabase's PostgREST
+  // layer (via supabase-js) says "Could not find the table '...' in the
+  // schema cache" instead. Both mean "reachable, just not migrated yet."
+  return (
+    /relation .* does not exist/i.test(message) ||
+    /could not find the table .* in the schema cache/i.test(message)
+  );
 }
