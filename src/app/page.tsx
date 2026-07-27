@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { PhaseRow } from "@/components/qa/PhaseRow";
+import { CalendulaMark } from "@/components/brand/CalendulaMark";
 import { readQaStatus, emptyPhaseState } from "@/lib/qa/store";
 import { markPhaseVerified, reportPhaseBug, resolvePhaseBug } from "@/app/actions/qa";
 
@@ -37,6 +38,7 @@ export default async function OverviewPage() {
         eyebrow="Overview"
         title="Calendula is under construction"
         lead="Phases 0 and 1 are built. Built doesn't mean verified — click a phase below to confirm it works yourself, or report what's broken. No auto-scheduling exists yet: the task solver, habits, and advisor are Phase 2 and later."
+        action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 
       <div className="flex flex-col gap-4">
