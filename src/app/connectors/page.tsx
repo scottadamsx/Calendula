@@ -43,6 +43,10 @@ function Connector({
 }
 
 export default function ConnectorsPage() {
+  const supabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
+
   return (
     <>
       <PageHeader
@@ -55,8 +59,12 @@ export default function ConnectorsPage() {
         <Connector
           name="Supabase"
           description="Postgres, auth, and row-level security — the truth layer every solver reads through the grid."
-          status="not_connected"
-          disabledReason="No project provisioned yet. Set NEXT_PUBLIC_SUPABASE_URL and the anon key to connect (see Settings)."
+          status={supabaseConfigured ? "connected" : "not_connected"}
+          disabledReason={
+            supabaseConfigured
+              ? undefined
+              : "No project configured. Set NEXT_PUBLIC_SUPABASE_URL and the anon key to connect (see Settings)."
+          }
         />
         <Connector
           name="Google Calendar"

@@ -30,6 +30,19 @@ export default async function WeekPage({
   searchParams: Promise<{ weekOffset?: string }>;
 }) {
   const { weekOffset: weekOffsetParam } = await searchParams;
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return (
+      <NotConnected>
+        No Supabase project configured yet — see{" "}
+        <Link href="/connectors" className="text-brand-600 hover:text-brand-700 underline">
+          Connectors
+        </Link>
+        .
+      </NotConnected>
+    );
+  }
+
   const supabase = await createClient();
 
   const {
