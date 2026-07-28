@@ -244,4 +244,23 @@ describe("solveCore", () => {
     const someday = result.placements.find((p) => p.taskId === "someday")!;
     expect(urgent.start.getTime()).toBeLessThan(someday.start.getTime());
   });
+
+  it("flags a placed task as at-risk when its slack is under 120 minutes, and not otherwise", () => {
+    const now = local(2026, 6, 1, 8, 0);
+    const horizonEnd = local(2026, 6, 2, 0, 0);
+    const blocks = makeBlocks(now, horizonEnd);
+
+    const tasks: TaskInput[] = [
+      // deadline +180m, 90m of work: slack = 180 - 90 = 90 < 120 → at risk.
+      task({ id: "tight", remainingMinutes: 90, deadline: local(2026, 6, 1, 11, 0), minChunkMinutes: 90, maxChunkMinutes: 90, splittable: false }),
+      // deadline +300m, 60m of work: slack = 300 - 60 = 240 >= 120 → comfortable.
+      task({ id: "comfortable", remainingMinutes: 60, deadline: local(2026, 6, 1, 13, 0), minChunkMinutes: 60, maxChunkMinutes: 60, splittable: false }),
+    ];
+
+    const result = solveCore({ ...baseInput, now, blocks, tasks });
+
+    expect(result.unplaceable).toHaveLength(0);
+    expect(result.atRisk.some((r) => r.taskId === "tight")).toBe(true);
+    expect(result.atRisk.some((r) => r.taskId === "comfortable")).toBe(false);
+  });
 });
