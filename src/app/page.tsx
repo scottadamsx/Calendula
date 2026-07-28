@@ -7,18 +7,54 @@ import { readQaStatus, emptyPhaseState } from "@/lib/qa/store";
 import { markPhaseVerified, reportPhaseBug, resolvePhaseBug } from "@/app/actions/qa";
 
 const BUILT_PHASES = [
-  { id: "phase-0", name: "Phase 0 — Foundation", detail: "Schema, RLS, dispatcher stub, brand system, house style." },
-  { id: "phase-1", name: "Phase 1 — Grid, read-only", detail: "buildGrid, week view rendering hard placements, DST-correct." },
+  {
+    id: "phase-0",
+    name: "Phase 0 — Foundation",
+    detail: "The database, login, and visual design underneath everything else. Nothing to look at yet — this is the plumbing.",
+  },
+  {
+    id: "phase-1",
+    name: "Phase 1 — Week view",
+    detail: "Shows your fixed commitments (classes, shifts, appointments) on a week grid. Nothing gets scheduled automatically yet — that's next.",
+  },
 ];
 
 const UPCOMING_PHASES = [
-  { name: "Phase 2 — Task solver", status: "next" as const, detail: "Least-slack-time solver, movement penalty, freeze window." },
-  { name: "Phase 3 — Habits", status: "later" as const, detail: "Second-pass placement, spacing constraints." },
-  { name: "Phase 4 — Meeting offers", status: "later" as const, detail: "Displacement cost, tentative holds, expiry cron." },
-  { name: "Phase 4.5 — Reminders core", status: "later" as const, detail: "Urgency, receptivity, attention budget." },
-  { name: "Phase 5 — Future windows", status: "later" as const, detail: "Projected load, window scoring, defended holds." },
-  { name: "Phase 6 — Advisor and reconciliation", status: "later" as const, detail: "Signal queries, daily brief, calibration." },
-  { name: "Phase 7 — Google Calendar import", status: "later" as const, detail: "Read-only pull, deduplicated on external_id." },
+  {
+    name: "Phase 2 — Auto-scheduling your to-do list",
+    status: "next" as const,
+    detail: "Automatically finds time for tasks based on their deadlines, fitting them into your actual free time.",
+  },
+  {
+    name: "Phase 3 — Habits",
+    status: "later" as const,
+    detail: "Schedules recurring things like the gym or practice, spaced out so they don't all land on the same day.",
+  },
+  {
+    name: "Phase 4 — \"When are you free?\"",
+    status: "later" as const,
+    detail: "Suggests real meeting times when someone asks, without double-booking you or backfilling the slot overnight.",
+  },
+  {
+    name: "Phase 4.5 — Smart reminders",
+    status: "later" as const,
+    detail: "Nudges you about things at the right moment instead of bombarding you with notifications.",
+  },
+  {
+    name: "Phase 5 — Planning ahead",
+    status: "later" as const,
+    detail: "Helps you plan and protect multi-day trips or events weeks or months in advance.",
+  },
+  {
+    name: "Phase 6 — Daily summary",
+    status: "later" as const,
+    detail: "A daily written summary of what's going on, and learning from how long things actually take you.",
+  },
+  {
+    name: "Phase 7 — Google Calendar import",
+    status: "later" as const,
+    detail: "Pulls your existing Google Calendar events in automatically. One-way only — never edits Google Calendar itself.",
+  },
 ];
 
 const STATUS_LABEL: Record<
@@ -37,7 +73,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Phases 0 and 1 are built. Built doesn't mean verified — click a phase below to confirm it works yourself, or report what's broken. No auto-scheduling exists yet: the task solver, habits, and advisor are Phase 2 and later."
+        lead="The first two pieces are built: the plumbing, and a week view of your fixed commitments. Nothing schedules itself automatically yet — that starts with Phase 2. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 
