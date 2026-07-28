@@ -62,9 +62,16 @@ export async function createTask(
 
   const failed = result.unplaceable.find((u) => u.taskId === inserted.id);
   if (failed) {
+    const placedMinutes = estimatedMinutes - failed.remainingMinutes;
+    if (placedMinutes > 0) {
+      return {
+        ok: true,
+        message: `"${title}" added — scheduled ${placedMinutes} of ${estimatedMinutes} minutes; the remaining ${failed.remainingMinutes} couldn't fit before the deadline.`,
+      };
+    }
     return {
       ok: true,
-      message: `"${title}" added, but there wasn't room for it before its deadline — it's unplaceable, not overlapping anything.`,
+      message: `"${title}" added, but there wasn't room for any of it before its deadline — it's unplaceable, not overlapping anything.`,
     };
   }
 
