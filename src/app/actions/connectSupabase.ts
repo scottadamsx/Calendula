@@ -83,10 +83,13 @@ export async function connectSupabase(
           : "Schema was already up to date.",
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown migration error.";
     steps.push({
       label: "Apply the schema",
       ok: false,
-      detail: err instanceof Error ? err.message : "Unknown migration error.",
+      detail: isIpv6OnlyDnsError(message)
+        ? `${message} — this is Supabase's "Direct connection" host, which is IPv6-only and fails on most home networks. Use the Session pooler connection string instead (Project Settings → Database → Connection string → Session pooler tab).`
+        : message,
     });
     return { ok: false, steps };
   }
@@ -119,6 +122,10 @@ export async function connectSupabase(
   steps.push({ label: "Save configuration", ok: true, detail: "Written to .env.local." });
 
   return { ok: true, steps };
+}
+
+function isIpv6OnlyDnsError(message: string): boolean {
+  return /ENOTFOUND\s+db\.[a-z0-9]+\.supabase\.co/i.test(message);
 }
 
 function isMissingTableError(message: string): boolean {

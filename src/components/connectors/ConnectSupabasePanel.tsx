@@ -40,7 +40,13 @@ export function ConnectSupabasePanel({ configured }: { configured: boolean }) {
         <p className="font-semibold text-ink mt-3 mb-1">2. Copy four values</p>
         <p>
           Project Settings → API for the URL, anon key, and service role key. Project Settings →
-          Database → Connection string (URI) for the database URL.
+          Database → Connection string, for the database URL, use the{" "}
+          <strong className="text-ink">Session pooler</strong> tab — not Direct connection.
+          Direct connection hosts are IPv6-only and will fail with{" "}
+          <code className="font-data">ENOTFOUND</code> on most home networks; the session pooler
+          works everywhere and the username looks like{" "}
+          <code className="font-data">postgres.[project-ref]</code> instead of plain{" "}
+          <code className="font-data">postgres</code>.
         </p>
         <p className="font-semibold text-ink mt-3 mb-1">3. Paste below</p>
         <p>
@@ -54,9 +60,9 @@ export function ConnectSupabasePanel({ configured }: { configured: boolean }) {
         <Field label="anon public key" name="anonKey" placeholder="eyJ..." />
         <Field label="service role key" name="serviceRoleKey" placeholder="eyJ..." secret />
         <Field
-          label="Database URL (connection string)"
+          label="Database URL — Session pooler connection string"
           name="dbUrl"
-          placeholder="postgresql://postgres:...@db.xxxx.supabase.co:5432/postgres"
+          placeholder="postgresql://postgres.xxxx:...@aws-0-region.pooler.supabase.com:5432/postgres"
           secret
         />
 
