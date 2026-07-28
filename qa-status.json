@@ -1,4 +1,19 @@
 {
-  "phase-0": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-1": { "verified": false, "verifiedAt": null, "bugs": [] }
+  "phase-0": {
+    "verified": true,
+    "verifiedAt": "2026-07-28T13:36:12.297Z",
+    "bugs": []
+  },
+  "phase-1": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": [
+      {
+        "id": "3eb1aa19-9f41-4be0-b322-2a9d0dad3c38",
+        "text": "it doesn't work it says you need to connect sup abase and login to se the grid",
+        "reportedAt": "2026-07-28T13:37:11.003Z",
+        "resolvedAt": null
+      }
+    ]
+  }
 }

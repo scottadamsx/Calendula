@@ -52,11 +52,11 @@ export default async function WeekPage({
   if (!user) {
     return (
       <NotConnected>
-        No signed-in session. Connect Supabase and sign in to see your schedule — see{" "}
-        <Link href="/connectors" className="text-brand-600 hover:text-brand-700 underline">
-          Connectors
-        </Link>
-        .
+        No signed-in session.{" "}
+        <Link href="/login" className="text-brand-600 hover:text-brand-700 underline">
+          Sign in
+        </Link>{" "}
+        to see your schedule.
       </NotConnected>
     );
   }
