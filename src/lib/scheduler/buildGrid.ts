@@ -12,17 +12,17 @@ export async function buildGrid(userId: string, from: Date, to: Date): Promise<B
   const supabase = await createClient();
 
   const { data: profile, error: profileError } = await supabase
-    .from("scheduling_profile")
+    .from("calendula_scheduling_profile")
     .select("timezone, sleep_start, sleep_end, block_minutes, freeze_window_hours")
     .eq("user_id", userId)
     .single();
 
   if (profileError || !profile) {
-    throw new Error(`No scheduling_profile for user ${userId}; cannot build a grid.`);
+    throw new Error(`No calendula_scheduling_profile for user ${userId}; cannot build a grid.`);
   }
 
   const { data: placements, error: placementsError } = await supabase
-    .from("placements")
+    .from("calendula_placements")
     .select("source_id, title, starts_at, ends_at, hardness, pinned, location")
     .eq("user_id", userId)
     .lt("starts_at", to.toISOString())
@@ -40,7 +40,7 @@ export async function buildGrid(userId: string, from: Date, to: Date): Promise<B
   const bufferBySourceId = new Map<string, number>();
   if (fixedSourceIds.length > 0) {
     const { data: fixedBlocks, error: fixedError } = await supabase
-      .from("fixed_blocks")
+      .from("calendula_fixed_blocks")
       .select("id, travel_buffer_minutes")
       .in("id", fixedSourceIds);
     if (fixedError) throw fixedError;
@@ -50,7 +50,7 @@ export async function buildGrid(userId: string, from: Date, to: Date): Promise<B
   }
 
   const { data: energyWindows, error: energyError } = await supabase
-    .from("energy_windows")
+    .from("calendula_energy_windows")
     .select("day_of_week, start_time, end_time, quality, label")
     .eq("user_id", userId);
 

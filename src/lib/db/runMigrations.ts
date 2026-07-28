@@ -44,7 +44,7 @@ export async function runMigrations(connectionString: string): Promise<Migration
     const { rows: canaryRows } = await client.query<{ exists: boolean }>(`
       select exists (
         select 1 from information_schema.tables
-        where table_schema = 'public' and table_name = 'scheduling_profile'
+        where table_schema = 'public' and table_name = 'calendula_scheduling_profile'
       ) as exists;
     `);
     const schemaAlreadyExists = canaryRows[0]?.exists ?? false;

@@ -94,7 +94,7 @@ export async function syncFixedBlockPlacements(
   const supabase = createServiceRoleClient();
 
   const { data: profile, error: profileError } = await supabase
-    .from("scheduling_profile")
+    .from("calendula_scheduling_profile")
     .select("timezone")
     .eq("user_id", userId)
     .single();
@@ -102,11 +102,11 @@ export async function syncFixedBlockPlacements(
   if (profileError || !profile) {
     // Never assume a timezone (spec §4, §5.1) — a missing profile is a real
     // error, not a reason to fall back to a default.
-    throw new Error(`No scheduling_profile for user ${userId}; cannot sync fixed blocks.`);
+    throw new Error(`No calendula_scheduling_profile for user ${userId}; cannot sync fixed blocks.`);
   }
 
   const { data: fixedBlocks, error: blocksError } = await supabase
-    .from("fixed_blocks")
+    .from("calendula_fixed_blocks")
     .select("id, title, starts_at, ends_at, rrule, location, travel_buffer_minutes")
     .eq("user_id", userId);
 
@@ -140,7 +140,7 @@ export async function syncFixedBlockPlacements(
   if (rows.length === 0) return { synced: 0 };
 
   const { error: upsertError } = await supabase
-    .from("placements")
+    .from("calendula_placements")
     .upsert(rows, { onConflict: "user_id,source_type,source_id,starts_at" });
 
   if (upsertError) throw upsertError;

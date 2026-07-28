@@ -6,17 +6,17 @@
 -- Enum types (§5.2, §5.8)
 -- =============================================================================
 
-create type energy_label as enum ('deep', 'admin', 'social', 'physical', 'creative');
-create type reminder_kind as enum ('moment', 'window', 'context', 'latent');
-create type trigger_type as enum ('time', 'before_placement', 'after_placement', 'location');
-create type reminder_status as enum ('pending', 'delivered', 'acknowledged', 'done', 'dismissed', 'promoted');
-create type interruption_cost as enum ('ambient', 'notify', 'insist');
+create type calendula_energy_label as enum ('deep', 'admin', 'social', 'physical', 'creative');
+create type calendula_reminder_kind as enum ('moment', 'window', 'context', 'latent');
+create type calendula_trigger_type as enum ('time', 'before_placement', 'after_placement', 'location');
+create type calendula_reminder_status as enum ('pending', 'delivered', 'acknowledged', 'done', 'dismissed', 'promoted');
+create type calendula_interruption_cost as enum ('ambient', 'notify', 'insist');
 
 -- =============================================================================
 -- §5.1 Profile and constraints
 -- =============================================================================
 
-create table scheduling_profile (
+create table calendula_scheduling_profile (
   user_id                  uuid primary key references auth.users(id),
   timezone                 text not null default 'America/St_Johns',
   sleep_start              time not null default '23:30',
@@ -32,7 +32,7 @@ create table scheduling_profile (
   created_at               timestamptz default now()
 );
 
-create table attention_profile (
+create table calendula_attention_profile (
   user_id                  uuid primary key references auth.users(id),
   attention_budget_per_day int not null default 5,
   min_gap_minutes          int not null default 45,
@@ -46,7 +46,7 @@ create table attention_profile (
 -- §5.2 Categories and labels
 -- =============================================================================
 
-create table categories (
+create table calendula_categories (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null,
   name       text not null,
@@ -55,21 +55,21 @@ create table categories (
   unique (user_id, name)
 );
 
-create table energy_windows (
+create table calendula_energy_windows (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null,
   day_of_week int,
   start_time  time not null,
   end_time    time not null,
   quality     numeric not null check (quality between 0 and 1),
-  label       energy_label not null
+  label       calendula_energy_label not null
 );
 
 -- =============================================================================
 -- §5.3 People
 -- =============================================================================
 
-create table people (
+create table calendula_people (
   id                   uuid primary key default gen_random_uuid(),
   user_id              uuid not null,
   name                 text not null,
@@ -84,7 +84,7 @@ create table people (
 -- §5.4 Commitments
 -- =============================================================================
 
-create table fixed_blocks (
+create table calendula_fixed_blocks (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null,
   title                 text not null,
@@ -99,10 +99,10 @@ create table fixed_blocks (
   created_at            timestamptz default now()
 );
 
-create table tasks (
+create table calendula_tasks (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null,
-  category_id       uuid references categories(id),
+  category_id       uuid references calendula_categories(id),
   title             text not null,
   estimated_minutes int not null,
   remaining_minutes int not null,
@@ -111,20 +111,20 @@ create table tasks (
   min_chunk_minutes int not null default 45,
   max_chunk_minutes int not null default 180,
   splittable        boolean not null default true,
-  preferred_labels  energy_label[],
+  preferred_labels  calendula_energy_label[],
   status            text not null default 'active',
   skip_count        int not null default 0,
   created_at        timestamptz default now()
 );
 
-create table habits (
+create table calendula_habits (
   id                       uuid primary key default gen_random_uuid(),
   user_id                  uuid not null,
   title                    text not null,
   duration_minutes         int not null,
   target_sessions_per_week int not null,
   min_spacing_hours        int not null default 24,
-  preferred_labels         energy_label[],
+  preferred_labels         calendula_energy_label[],
   earliest_time            time,
   latest_time              time,
   location                 text,
@@ -136,7 +136,7 @@ create table habits (
 -- §5.5 Placements — the occupancy table. The grid engine reads nothing else.
 -- =============================================================================
 
-create table placements (
+create table calendula_placements (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null,
   source_type text not null check (source_type in
@@ -152,14 +152,14 @@ create table placements (
   created_at  timestamptz default now()
 );
 
-create index on placements (user_id, starts_at, ends_at);
-create index on placements (user_id, hardness);
+create index on calendula_placements (user_id, starts_at, ends_at);
+create index on calendula_placements (user_id, hardness);
 
 -- =============================================================================
 -- §5.6 Future activities
 -- =============================================================================
 
-create table activity_types (
+create table calendula_activity_types (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null,
   name               text not null,
@@ -172,10 +172,10 @@ create table activity_types (
   weather_sensitive  boolean not null default false
 );
 
-create table activity_holds (
+create table calendula_activity_holds (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null,
-  activity_type_id uuid not null references activity_types(id),
+  activity_type_id uuid not null references calendula_activity_types(id),
   starts_at        timestamptz not null,
   ends_at          timestamptz not null,
   status           text not null default 'held',
@@ -187,7 +187,7 @@ create table activity_holds (
 -- §5.7 Meeting offers
 -- =============================================================================
 
-create table meeting_offers (
+create table calendula_meeting_offers (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null,
   person_ids       uuid[],
@@ -200,19 +200,19 @@ create table meeting_offers (
 );
 
 -- SPEC-GAP (see CLAUDE.md escalation rule): §5.7 of the v3 doc omits user_id
--- from meeting_offer_slots, which contradicts §5's own "every table carries
+-- from calendula_meeting_offer_slots, which contradicts §5's own "every table carries
 -- user_id" invariant and would leave this table unreachable by the standard
 -- owner RLS policy. Recommendation applied: denormalize user_id onto the
 -- child row so the same policy shape covers it. Flagging rather than silently
 -- deviating — revisit if the spec is amended.
-create table meeting_offer_slots (
+create table calendula_meeting_offer_slots (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null,
-  offer_id          uuid not null references meeting_offers(id) on delete cascade,
+  offer_id          uuid not null references calendula_meeting_offers(id) on delete cascade,
   starts_at         timestamptz not null,
   ends_at           timestamptz not null,
   displacement_cost numeric not null,
-  placement_id      uuid references placements(id) on delete set null,
+  placement_id      uuid references calendula_placements(id) on delete set null,
   chosen            boolean not null default false
 );
 
@@ -220,29 +220,29 @@ create table meeting_offer_slots (
 -- §5.8 Reminders
 -- =============================================================================
 
-create table reminders (
+create table calendula_reminders (
   id                   uuid primary key default gen_random_uuid(),
   user_id              uuid not null,
-  category_id          uuid references categories(id),
+  category_id          uuid references calendula_categories(id),
   title                text not null,
   body                 text,
-  kind                 reminder_kind not null,
+  kind                 calendula_reminder_kind not null,
 
   due_at               timestamptz,
   window_start         timestamptz,
   window_end           timestamptz,
 
-  trigger              trigger_type not null default 'time',
-  trigger_placement_id uuid references placements(id) on delete cascade,
+  trigger              calendula_trigger_type not null default 'time',
+  trigger_placement_id uuid references calendula_placements(id) on delete cascade,
   lead_minutes         int not null default 0,
   location             text,
 
   importance           int not null default 3 check (importance between 1 and 5),
-  cost                 interruption_cost not null default 'notify',
-  person_id            uuid references people(id),
+  cost                 calendula_interruption_cost not null default 'notify',
+  person_id            uuid references calendula_people(id),
 
   recurrence           text,
-  status               reminder_status not null default 'pending',
+  status               calendula_reminder_status not null default 'pending',
   defer_count          int not null default 0,
   promotion_offered    boolean not null default false,
 
@@ -254,13 +254,13 @@ create table reminders (
   completed_at         timestamptz
 );
 
-create index on reminders (user_id, status, due_at);
-create index on reminders (user_id, trigger_placement_id);
+create index on calendula_reminders (user_id, status, due_at);
+create index on calendula_reminders (user_id, trigger_placement_id);
 
-create table reminder_deliveries (
+create table calendula_reminder_deliveries (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null,
-  reminder_id  uuid not null references reminders(id) on delete cascade,
+  reminder_id  uuid not null references calendula_reminders(id) on delete cascade,
   batch_id     uuid,
   scheduled_at timestamptz not null,
   delivered_at timestamptz,
@@ -275,21 +275,21 @@ create table reminder_deliveries (
 -- §5.9 Reconciliation
 -- =============================================================================
 
-create table completions (
+create table calendula_completions (
   id              uuid primary key default gen_random_uuid(),
   user_id         uuid not null,
-  task_id         uuid references tasks(id),
-  habit_id        uuid references habits(id),
-  placement_id    uuid references placements(id),
+  task_id         uuid references calendula_tasks(id),
+  habit_id        uuid references calendula_habits(id),
+  placement_id    uuid references calendula_placements(id),
   planned_minutes int,
   actual_minutes  int,
   completed       boolean not null,
   logged_at       timestamptz default now()
 );
 
-create table duration_calibration (
+create table calendula_duration_calibration (
   user_id     uuid not null,
-  category_id uuid not null references categories(id),
+  category_id uuid not null references calendula_categories(id),
   multiplier  numeric not null default 1.0,
   sample_size int not null default 0,
   updated_at  timestamptz default now(),
@@ -300,7 +300,7 @@ create table duration_calibration (
 -- §5.10 Audit
 -- =============================================================================
 
-create table schedule_runs (
+create table calendula_schedule_runs (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null,
   trigger       text not null,
@@ -322,16 +322,16 @@ declare
 begin
   for t in
     select unnest(array[
-      'scheduling_profile', 'attention_profile',
-      'categories', 'energy_windows',
-      'people',
-      'fixed_blocks', 'tasks', 'habits',
-      'placements',
-      'activity_types', 'activity_holds',
-      'meeting_offers', 'meeting_offer_slots',
-      'reminders', 'reminder_deliveries',
-      'completions', 'duration_calibration',
-      'schedule_runs'
+      'calendula_scheduling_profile', 'calendula_attention_profile',
+      'calendula_categories', 'calendula_energy_windows',
+      'calendula_people',
+      'calendula_fixed_blocks', 'calendula_tasks', 'calendula_habits',
+      'calendula_placements',
+      'calendula_activity_types', 'calendula_activity_holds',
+      'calendula_meeting_offers', 'calendula_meeting_offer_slots',
+      'calendula_reminders', 'calendula_reminder_deliveries',
+      'calendula_completions', 'calendula_duration_calibration',
+      'calendula_schedule_runs'
     ])
   loop
     execute format('alter table %I enable row level security;', t);

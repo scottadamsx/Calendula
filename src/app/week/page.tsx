@@ -62,7 +62,7 @@ export default async function WeekPage({
   }
 
   const { data: profile } = await supabase
-    .from("scheduling_profile")
+    .from("calendula_scheduling_profile")
     .select("timezone, horizon_days")
     .eq("user_id", user.id)
     .single();
@@ -70,8 +70,9 @@ export default async function WeekPage({
   if (!profile) {
     return (
       <NotConnected>
-        Signed in, but this user has no <code className="font-data">scheduling_profile</code> row
-        yet. Run <code className="font-data">supabase/seed.sql</code> or create one.
+        Signed in, but this user has no{" "}
+        <code className="font-data">calendula_scheduling_profile</code> row yet. Run{" "}
+        <code className="font-data">supabase/seed.sql</code> or create one.
       </NotConnected>
     );
   }

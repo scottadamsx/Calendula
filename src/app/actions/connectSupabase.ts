@@ -49,7 +49,7 @@ export async function connectSupabase(
   try {
     const supabase = createClient(url, anonKey);
     const { error } = await supabase
-      .from("scheduling_profile")
+      .from("calendula_scheduling_profile")
       .select("user_id")
       .limit(1);
     // A missing-table error here is expected pre-migration and still proves
@@ -97,12 +97,12 @@ export async function connectSupabase(
   // Step 3 — re-verify against the now-migrated schema.
   try {
     const supabase = createClient(url, anonKey);
-    const { error } = await supabase.from("scheduling_profile").select("user_id").limit(1);
+    const { error } = await supabase.from("calendula_scheduling_profile").select("user_id").limit(1);
     if (error) {
       steps.push({ label: "Verify the schema", ok: false, detail: error.message });
       return { ok: false, steps };
     }
-    steps.push({ label: "Verify the schema", ok: true, detail: "scheduling_profile is queryable." });
+    steps.push({ label: "Verify the schema", ok: true, detail: "calendula_scheduling_profile is queryable." });
   } catch (err) {
     steps.push({
       label: "Verify the schema",
