@@ -10,6 +10,7 @@ type FormAction = (formData: FormData) => void | Promise<void>;
 export function PhaseRow({
   name,
   detail,
+  howToTest,
   qaState,
   markVerified,
   reportBug,
@@ -17,12 +18,25 @@ export function PhaseRow({
 }: {
   name: string;
   detail: string;
+  howToTest?: string[];
   qaState: QaPhaseState;
   markVerified: FormAction;
   reportBug: FormAction;
   resolveBug: (bugId: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Closing the panel once its action is done — nothing left to do here, so
+  // nothing left to look at.
+  async function handleMarkVerified(formData: FormData) {
+    await markVerified(formData);
+    setExpanded(false);
+  }
+
+  async function handleReportBug(formData: FormData) {
+    await reportBug(formData);
+    setExpanded(false);
+  }
 
   const openBugs = qaState.bugs.filter((b) => !b.resolvedAt);
   const resolvedBugs = qaState.bugs.filter((b) => b.resolvedAt);
@@ -50,6 +64,19 @@ export function PhaseRow({
 
       {expanded && (
         <div className="pb-4 flex flex-col gap-3">
+          {howToTest && howToTest.length > 0 && (
+            <div className="bg-brand-50 rounded-sm p-3">
+              <p className="text-xs font-semibold text-ink mb-1">How to test this</p>
+              <ol className="list-decimal list-inside flex flex-col gap-1">
+                {howToTest.map((step, i) => (
+                  <li key={i} className="text-xs text-ink-soft">
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {qaState.verified && !openBugs.length && qaState.verifiedAt && (
             <p className="text-xs text-ink-faint">
               Confirmed working {new Date(qaState.verifiedAt).toLocaleString()}.
@@ -92,14 +119,14 @@ export function PhaseRow({
           )}
 
           <div className="flex items-center gap-2 flex-wrap">
-            <form action={markVerified}>
+            <form action={handleMarkVerified}>
               <Button type="submit" variant="primary" size="sm">
                 Confirm it works
               </Button>
             </form>
           </div>
 
-          <form action={reportBug} className="flex flex-col gap-2">
+          <form action={handleReportBug} className="flex flex-col gap-2">
             <textarea
               name="bug"
               required

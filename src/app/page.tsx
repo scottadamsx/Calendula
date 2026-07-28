@@ -11,16 +11,33 @@ const BUILT_PHASES = [
     id: "phase-0",
     name: "Phase 0 — Foundation",
     detail: "The database, login, and visual design underneath everything else. Nothing to look at yet — this is the plumbing.",
+    howToTest: [
+      "Go to Settings.",
+      "Check the Credentials list.",
+      "Expected: all four Supabase values show \"Set,\" nothing shows an error.",
+    ],
   },
   {
     id: "phase-1",
     name: "Phase 1 — Week view",
     detail: "Shows your fixed commitments (classes, shifts, appointments) on a week grid. Nothing gets scheduled automatically yet.",
+    howToTest: [
+      "Go to Week.",
+      "Look for your classes/shifts/appointments (solid dark blocks).",
+      "Expected: they show up on the correct day, at the correct time, with no crash.",
+    ],
   },
   {
     id: "phase-2",
     name: "Phase 2 — Auto-scheduling your to-do list",
     detail: "Automatically finds time for tasks based on their deadlines, fitting them into your actual free time without double-booking anything.",
+    howToTest: [
+      "Go to Week.",
+      "Use \"Add a task\" — title, a duration like 60 minutes, a deadline a few days out.",
+      "Wait about 2 seconds (it batches changes before scheduling), then refresh the page.",
+      "Expected: an orange block for that task appears sometime before its deadline, not overlapping anything else.",
+      "To test a conflict: add a second task with the same tight deadline and a long duration, longer than the free time actually left before that deadline. Expected: the message says there wasn't room for it, and on refresh that task has no orange block at all — it should never overlap the other one.",
+    ],
   },
 ];
 
@@ -90,6 +107,7 @@ export default async function OverviewPage() {
                 key={phase.id}
                 name={phase.name}
                 detail={phase.detail}
+                howToTest={phase.howToTest}
                 qaState={qaStatus[phase.id] ?? emptyPhaseState()}
                 markVerified={markPhaseVerified.bind(null, phase.id)}
                 reportBug={reportPhaseBug.bind(null, phase.id)}

@@ -6,6 +6,7 @@ import { mergeBySource } from "@/lib/scheduler/grid";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
+import { AddTaskForm } from "@/components/tasks/AddTaskForm";
 
 const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -87,7 +88,7 @@ export default async function WeekPage({
   const weekEnd = weekStart.plus({ days: 7 });
 
   const blocks = await buildGrid(user.id, weekStart.toJSDate(), weekEnd.toJSDate());
-  const placements = mergeBySource(blocks).filter((p) => p.state === "hard");
+  const placements = mergeBySource(blocks).filter((p) => p.state === "hard" || p.state === "soft");
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const day = weekStart.plus({ days: i });
@@ -102,7 +103,7 @@ export default async function WeekPage({
       <PageHeader
         eyebrow="Week"
         title={`Week of ${weekStart.toFormat("LLL d")}`}
-        lead="Read-only (spec §16 Phase 1) — hard placements only. No auto-scheduling exists yet, so a mostly-empty week is expected until Phase 2's task solver ships."
+        lead="Solid dark blocks are fixed commitments. Ray-colored blocks are tasks the solver auto-scheduled — add one below."
         action={
           <div className="flex gap-2">
             <Link
@@ -121,6 +122,10 @@ export default async function WeekPage({
         }
       />
 
+      <div className="mb-4">
+        <AddTaskForm />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         {days.map(({ day, dayPlacements }, i) => (
           <Panel key={day.toISODate()} className="flex flex-col gap-3">
@@ -132,13 +137,24 @@ export default async function WeekPage({
             </div>
 
             {dayPlacements.length === 0 ? (
-              <p className="text-xs text-ink-faint">Nothing fixed.</p>
+              <p className="text-xs text-ink-faint">Nothing scheduled.</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {dayPlacements.map((p) => (
-                  <li key={`${p.sourceId}-${p.start.toISOString()}`} className="border-l-2 border-brand-600 pl-2">
-                    <div className="text-xs font-semibold text-ink">{p.title}</div>
-                    <div className="font-data text-[11px] text-ink-soft">
+                  <li
+                    key={`${p.sourceId}-${p.start.toISOString()}`}
+                    className={
+                      p.state === "hard"
+                        ? "rounded-sm bg-ink text-paper px-2 py-1"
+                        : "border-l-2 border-brand-600 bg-brand-50 pl-2 py-1 rounded-r-sm"
+                    }
+                  >
+                    <div className={`text-xs font-semibold ${p.state === "hard" ? "text-paper" : "text-ink"}`}>
+                      {p.title}
+                    </div>
+                    <div
+                      className={`font-data text-[11px] ${p.state === "hard" ? "text-paper/80" : "text-ink-soft"}`}
+                    >
                       {DateTime.fromJSDate(p.start, { zone: profile.timezone }).toFormat("HH:mm")}–
                       {DateTime.fromJSDate(p.end, { zone: profile.timezone }).toFormat("HH:mm")}
                     </div>
