@@ -5,15 +5,16 @@
     "bugs": []
   },
   "phase-1": {
-    "verified": false,
-    "verifiedAt": null,
+    "verified": true,
+    "verifiedAt": "2026-07-28T13:46:12.206Z",
     "bugs": [
       {
         "id": "3eb1aa19-9f41-4be0-b322-2a9d0dad3c38",
         "text": "it doesn't work it says you need to connect sup abase and login to se the grid",
         "reportedAt": "2026-07-28T13:37:11.003Z",
-        "resolvedAt": null
+        "resolvedAt": "2026-07-28T13:46:04.650Z"
       }
     ]
-  }
+  },
+  "phase-2": { "verified": false, "verifiedAt": null, "bugs": [] }
 }

@@ -44,4 +44,10 @@ export interface SolveResult {
 export interface SolveOptions {
   excludeRanges?: Range[];
   dryRun?: boolean;
+  /**
+   * Minor addition beyond the spec's literal §7.1 signature: schedule_runs
+   * (§5.10) has a `trigger` column, and only the dispatcher's caller knows
+   * what to put there. Defaults to "manual" if omitted.
+   */
+  trigger?: string;
 }

@@ -20,8 +20,14 @@ blocked-task: <phase/task>
 
 ## Conventions digest
 
-- **Naming**: table and column names match spec §5 verbatim — solver code should read
-  as a direct transcription, not a reinterpretation.
+- **Naming**: column names match spec §5 verbatim. **Table names carry a `calendula_`
+  prefix** (`calendula_tasks`, `calendula_reminders`, etc.) and every enum type does
+  too (`calendula_energy_label`, ...) — a forced deviation, not a spec ambiguity: this
+  project shares its Supabase project with heyscottybro (same `public` schema, same
+  `auth.users`), and unprefixed names collided outright (`relation "reminders" already
+  exists`) the first time the schema was applied for real. Every `.from("...")` call
+  and every migration/seed statement uses the prefixed name — grep for a bare table
+  name before assuming it's missing a reference.
 - **Errors**: typed result objects at boundaries (route handlers); throw only for
   programmer error.
 - **Styling source of truth**: `src/app/globals.css` (`@theme`, Tailwind v4 CSS-first,
@@ -73,6 +79,29 @@ copied from the local wall clock, then reinterpreting each result back as local 
 in the real zone. Covered by `src/lib/scheduler/fixedBlocks.test.ts` (crosses the
 2026-03-08 America/St_Johns spring-forward). Don't "simplify" this to a plain
 `rrule` call against the real UTC `dtstart` — that's the bug this works around.
+
+## Phase 2 — the task solver
+
+`solveCore.ts` (pure, spec §7.2/§7.3) + `solve.ts` (DB wrapper, spec §7.1's exact
+signature). Least-slack-time ordering, movement penalty, freeze-window exclusion,
+max-daily-minutes cap, and the min-break "no illegal sliver" hard-reject are all
+implemented and unit-tested directly against the spec's §16 Phase 2 acceptance
+criteria (five staggered deadlines all place in time; a re-solve with no input
+change moves zero placements; an impossible task returns `unplaceable`, never an
+overlap). Verified live against the real connected project too — a task landed
+`unplaceable` because its deadline coincided with the end of the 24h freeze window,
+leaving zero legal (non-frozen) room to place it. That's correct behavior (D7), not
+a bug: don't "fix" a task landing in `unplaceable` without checking whether the
+freeze window is the actual reason first.
+
+Known simplification, documented in `solve.ts`: the movement-penalty comparison
+only remembers a task's *first* previous chunk if it was ever split across multiple
+sessions, not its full placement history. None of the §16 acceptance criteria
+depend on multi-chunk movement history, so this wasn't escalated — revisit if a
+later phase needs it.
+
+`habitShortfall` and `derivedReminders` on `SolveResult` are always empty — honest
+about scope, not a placeholder. Habits are Phase 3; derived reminders are Phase 6.5.
 
 ## Cross-cutting additions (not tied to a spec phase)
 

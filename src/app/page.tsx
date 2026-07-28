@@ -15,19 +15,19 @@ const BUILT_PHASES = [
   {
     id: "phase-1",
     name: "Phase 1 — Week view",
-    detail: "Shows your fixed commitments (classes, shifts, appointments) on a week grid. Nothing gets scheduled automatically yet — that's next.",
+    detail: "Shows your fixed commitments (classes, shifts, appointments) on a week grid. Nothing gets scheduled automatically yet.",
+  },
+  {
+    id: "phase-2",
+    name: "Phase 2 — Auto-scheduling your to-do list",
+    detail: "Automatically finds time for tasks based on their deadlines, fitting them into your actual free time without double-booking anything.",
   },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 2 — Auto-scheduling your to-do list",
-    status: "next" as const,
-    detail: "Automatically finds time for tasks based on their deadlines, fitting them into your actual free time.",
-  },
-  {
     name: "Phase 3 — Habits",
-    status: "later" as const,
+    status: "next" as const,
     detail: "Schedules recurring things like the gym or practice, spaced out so they don't all land on the same day.",
   },
   {
@@ -73,7 +73,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="The first two pieces are built: the plumbing, and a week view of your fixed commitments. Nothing schedules itself automatically yet — that starts with Phase 2. Click a phase below to try it yourself and say whether it actually works."
+        lead="Three pieces are built: the plumbing, a week view of your fixed commitments, and auto-scheduling for your to-do list. Habits, meetings, and reminders are still ahead. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

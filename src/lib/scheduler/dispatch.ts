@@ -6,6 +6,7 @@ const DEBOUNCE_MS = 2000;
 interface PendingSolve {
   timer: ReturnType<typeof setTimeout>;
   resolvers: Array<(result: SolveResult) => void>;
+  trigger: string;
 }
 
 /**
@@ -20,23 +21,19 @@ interface PendingSolve {
 const pending = new Map<string, PendingSolve>();
 
 export async function requestSolve(userId: string, trigger: string): Promise<SolveResult> {
-  // `trigger` isn't consumed yet — Phase 2 writes it into `schedule_runs`
-  // once solve() has a database client to record the audit row against
-  // (spec §5.10, §7.1). Kept in the signature now so callers don't change
-  // when that lands.
-  void trigger;
-
   return new Promise((resolve) => {
     const existing = pending.get(userId);
     if (existing) {
       clearTimeout(existing.timer);
       existing.resolvers.push(resolve);
+      existing.trigger = trigger;
       existing.timer = setTimeout(() => fire(userId), DEBOUNCE_MS);
       return;
     }
 
     pending.set(userId, {
       resolvers: [resolve],
+      trigger,
       timer: setTimeout(() => fire(userId), DEBOUNCE_MS),
     });
   });
@@ -46,6 +43,6 @@ async function fire(userId: string) {
   const entry = pending.get(userId);
   if (!entry) return;
   pending.delete(userId);
-  const result = await solve(userId);
+  const result = await solve(userId, { trigger: entry.trigger });
   entry.resolvers.forEach((resolve) => resolve(result));
 }
