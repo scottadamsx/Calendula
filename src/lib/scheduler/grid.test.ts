@@ -37,6 +37,53 @@ describe("computeGrid", () => {
     expect(blocks[blocks.length - 1].end.getTime()).toBe(to.getTime());
   });
 
+  it("snaps the start to a block-minute boundary so two grids built at different moments share the same phase", () => {
+    // Regression test for a real bug: `from` is always `now`, which lands at
+    // a different second every call. Two solve() runs a few minutes apart
+    // built differently-phased grids; a placement inserted against one
+    // phase and another placement inserted against a different phase could
+    // both intersect the *same* block under a third grid's phase (e.g.
+    // /week's render) without the two placements ever actually overlapping
+    // each other. Snapping the start fixes this — every grid for a given
+    // blockMinutes must land on the same universal :00/:15/:30/:45 marks.
+    const to = local(2026, 6, 1, 10, 0);
+
+    const gridA = computeGrid({
+      from: local(2026, 6, 1, 8, 3), // 8:03 — arbitrary offset into the hour
+      to,
+      now: local(2026, 6, 1, 8, 3),
+      timezone: zone,
+      blockMinutes: 15,
+      sleepStart: "23:30",
+      sleepEnd: "07:30",
+      freezeWindowHours: 0,
+      placements: [],
+      energyWindows: [],
+    });
+
+    const gridB = computeGrid({
+      from: local(2026, 6, 1, 8, 11), // 8:11 — a different arbitrary offset
+      to,
+      now: local(2026, 6, 1, 8, 11),
+      timezone: zone,
+      blockMinutes: 15,
+      sleepStart: "23:30",
+      sleepEnd: "07:30",
+      freezeWindowHours: 0,
+      placements: [],
+      energyWindows: [],
+    });
+
+    // Both grids must agree on every block boundary from 8:15 onward (the
+    // first mark both "now"s have already passed) — same start times.
+    const startsA = new Set(gridA.map((b) => b.start.getTime()));
+    const startsB = new Set(gridB.map((b) => b.start.getTime()));
+    const commonRangeStarts = [...startsB].filter((t) => t >= local(2026, 6, 1, 8, 15).getTime());
+    for (const t of commonRangeStarts) {
+      expect(startsA.has(t)).toBe(true);
+    }
+  });
+
   it("marks the wrapping sleep window unavailable", () => {
     const from = local(2026, 6, 1, 0, 0);
     const to = local(2026, 6, 2, 0, 0);

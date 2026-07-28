@@ -100,6 +100,34 @@ sessions, not its full placement history. None of the §16 acceptance criteria
 depend on multi-chunk movement history, so this wasn't escalated — revisit if a
 later phase needs it.
 
+**Two real bugs found live** (Scotty's own "add a conflicting task" test, not caught
+by any unit test), both fixed:
+
+1. **Grid phase misalignment (`grid.ts`).** `computeGrid()` sliced blocks starting
+   at the exact `from` timestamp, and every caller passes `now = new Date()` as
+   `from` — landing at a different second every call. Two `solve()` runs a few
+   minutes apart built differently-*phased* grids; a placement inserted against one
+   phase and a second placement inserted against another phase could both
+   intersect the *same* block under a yet-different third grid's phase (e.g.
+   `/week`'s render) without the two placements ever actually overlapping each
+   other in real time. That's what threw the no-double-assignment invariant live:
+   two unrelated tasks, genuinely a couple of minutes apart, both touched one
+   oddly-boundaried block. Fixed by snapping the grid's start down to the nearest
+   `block_minutes` mark (e.g. the nearest :00/:15/:30/:45) before slicing, so every
+   grid for a given block size shares one universal phase. Covered by a regression
+   test in `grid.test.ts` proving two grids built a few minutes apart agree on
+   every block boundary.
+2. **`remaining_minutes` was never decremented after a solve (`solve.ts`).** A
+   task's DB row kept showing its full original `remaining_minutes` forever, even
+   after it was successfully placed — so the *next* solve treated it as brand new
+   and scheduled it *again*, alongside whatever it had already placed, landing
+   close enough to another task's placement to trigger bug #1. Fixed: after
+   persisting placements, each task's `remaining_minutes` is updated to what
+   `solveCore` actually reports left over (0 if fully placed, otherwise whatever
+   its `unplaceable` entry says). This is also what makes a task ever stop being
+   re-considered as a candidate — without it, nothing would ever leave the active
+   pool.
+
 `habitShortfall` and `derivedReminders` on `SolveResult` are always empty — honest
 about scope, not a placeholder. Habits are Phase 3; derived reminders are Phase 6.5.
 

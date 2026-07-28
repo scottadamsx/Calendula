@@ -192,6 +192,26 @@ export async function solve(userId: string, opts?: SolveOptions): Promise<SolveR
     if (insertError) throw insertError;
   }
 
+  // Persist how much of each task is actually left — without this, a task
+  // that already got placed still shows its full original remaining_minutes
+  // forever, so the very next solve treats it as brand new and schedules it
+  // *again* alongside whatever it already placed. That's a real bug this
+  // caught live: a fully-placed task got a second, redundant placement on
+  // the next solve, landing close enough to an unrelated task's placement
+  // that a later grid's block quantization made them appear to collide.
+  if (!dryRun) {
+    const unplaceableByTaskId = new Map(result.unplaceable.map((u) => [u.taskId, u.remainingMinutes]));
+    for (const t of taskInputs) {
+      const newRemaining = unplaceableByTaskId.get(t.id) ?? 0;
+      if (newRemaining === t.remainingMinutes) continue; // nothing changed for this task
+      const { error: updateError } = await supabase
+        .from("calendula_tasks")
+        .update({ remaining_minutes: newRemaining })
+        .eq("id", t.id);
+      if (updateError) throw updateError;
+    }
+  }
+
   if (!dryRun) {
     const { error: auditError } = await supabase.from("calendula_schedule_runs").insert({
       user_id: userId,

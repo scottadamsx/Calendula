@@ -69,7 +69,23 @@ export function computeGrid(input: GridInput): Block[] {
   // is not always a 15-minute step in UTC across a spring-forward/fall-back
   // boundary, and stepping in UTC would silently misalign block boundaries
   // against the user's actual day.
-  let cursor = DateTime.fromJSDate(input.from, { zone });
+  //
+  // The start is snapped down to the nearest blockMinutes boundary (e.g. the
+  // nearest :00/:15/:30/:45) rather than starting exactly at `from`. Every
+  // caller passes `now` as `from`, and `now` lands at a different second
+  // every time — without snapping, two grids built a few minutes apart (two
+  // separate solve() runs) get differently-phased blocks. A placement
+  // inserted against one grid's phase and a second placement inserted
+  // against another grid's phase can then both intersect the *same* block
+  // under a third grid's phase (e.g. /week's render) without ever actually
+  // overlapping each other in real time — which is exactly what tripped the
+  // no-double-assignment invariant live: two unrelated tasks' placements,
+  // a couple of minutes apart in reality, both touched one oddly-boundaried
+  // block. Snapping makes every grid for a given `blockMinutes` share the
+  // same universal phase, so this can't happen.
+  const from = DateTime.fromJSDate(input.from, { zone });
+  const snappedMinute = Math.floor(from.minute / input.blockMinutes) * input.blockMinutes;
+  let cursor = from.set({ minute: snappedMinute, second: 0, millisecond: 0 });
   const horizonEnd = DateTime.fromJSDate(input.to, { zone });
 
   while (cursor < horizonEnd) {
