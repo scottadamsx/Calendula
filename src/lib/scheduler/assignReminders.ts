@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildGrid } from "./buildGrid";
 import {
   assignRemindersCore,
+  applyBatching,
   type AttentionProfile,
   type ReminderCandidate,
   type ReminderKind,
@@ -129,13 +130,17 @@ export async function assignReminders(userId: string, client?: SupabaseClient): 
   const startOfDay = DateTime.fromJSDate(now, { zone: schedulingProfile.timezone }).startOf("day").toJSDate();
   const { data: deliveredToday, error: deliveredTodayError } = await supabase
     .from("calendula_reminder_deliveries")
-    .select("delivered_at")
+    .select("delivered_at, batch_id, id")
     .eq("user_id", userId)
     .not("delivered_at", "is", null)
     .gte("delivered_at", startOfDay.toISOString());
   if (deliveredTodayError) throw deliveredTodayError;
 
-  const deliveredCountToday = deliveredToday?.length ?? 0;
+  // spec §10.5: "batching buys back budget" — a batch of N reminders
+  // delivered together costs one real interruption, not N, so today's count
+  // toward the budget is the number of distinct batches (falling back to the
+  // delivery's own id for anything that wasn't batched), not raw row count.
+  const deliveredCountToday = new Set((deliveredToday ?? []).map((d) => d.batch_id ?? d.id)).size;
   const lastDeliveredAtMs = Math.max(
     0,
     ...(deliveredToday ?? []).map((d) => new Date(d.delivered_at as string).getTime()),
@@ -149,15 +154,19 @@ export async function assignReminders(userId: string, client?: SupabaseClient): 
   });
   if (assignments.length === 0) return { assignedCount: 0 };
 
-  // channel: 'inline' — push doesn't exist yet (spec §9.8/Phase 4.6), so the
-  // only delivery surface right now is the Reminders page. brief (the daily
-  // digest) is also unbuilt (Phase 6). The budget/receptivity/urgency math
-  // above still runs in full either way — that's the actual Phase 4.5
-  // deliverable; channel routing is a separate, later concern (§10.8).
+  const batched = applyBatching(assignments, blocks, profile.batchByDefault);
+
+  // channel: 'inline' — push doesn't exist yet (deliberately deferred, see
+  // CLAUDE.md), so the only delivery surface right now is the Reminders
+  // page. brief (the daily digest) is also unbuilt (Phase 6). The
+  // budget/receptivity/urgency math above still runs in full either way —
+  // that's the actual Phase 4.5 deliverable; channel routing is a separate,
+  // later concern (§10.8).
   const { error: insertError } = await supabase.from("calendula_reminder_deliveries").insert(
-    assignments.map((a) => ({
+    batched.map((a) => ({
       user_id: userId,
       reminder_id: a.reminderId,
+      batch_id: a.batchId,
       scheduled_at: a.blockStart.toISOString(),
       channel: "inline",
       receptivity: a.receptivity,
@@ -166,5 +175,5 @@ export async function assignReminders(userId: string, client?: SupabaseClient): 
   );
   if (insertError) throw insertError;
 
-  return { assignedCount: assignments.length };
+  return { assignedCount: batched.length };
 }

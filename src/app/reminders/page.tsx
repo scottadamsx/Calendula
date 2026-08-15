@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { AddReminderForm } from "@/components/reminders/AddReminderForm";
+import { ReminderOutcomeButtons } from "@/components/reminders/ReminderOutcomeButtons";
+import { formatDigestMessage } from "@/lib/scheduler/reminders";
 
 function NotConnected({ children }: { children: React.ReactNode }) {
   return (
@@ -65,7 +67,7 @@ export default async function RemindersPage() {
     .from("calendula_reminders")
     .select("id, title, kind, due_at, window_start, window_end, importance, status, defer_count")
     .eq("user_id", user.id)
-    .in("status", ["pending", "delivered"])
+    .in("status", ["pending", "acknowledged"])
     .order("created_at", { ascending: false })
     .limit(30);
 
@@ -74,15 +76,42 @@ export default async function RemindersPage() {
     reminderIds.length > 0
       ? await supabase
           .from("calendula_reminder_deliveries")
-          .select("reminder_id, scheduled_at, delivered_at")
+          .select("reminder_id, scheduled_at, delivered_at, batch_id")
           .in("reminder_id", reminderIds)
-          .is("delivered_at", null)
           .order("scheduled_at", { ascending: true })
       : { data: [] };
 
-  const nextDeliveryByReminder = new Map<string, string>();
-  for (const d of deliveries ?? []) {
-    if (!nextDeliveryByReminder.has(d.reminder_id)) nextDeliveryByReminder.set(d.reminder_id, d.scheduled_at);
+  // Most recent delivery per reminder — later rows overwrite earlier ones
+  // since the query above is already sorted ascending by scheduled_at.
+  const latestDeliveryByReminder = new Map<
+    string,
+    { scheduled_at: string; delivered_at: string | null; batch_id: string | null }
+  >();
+  for (const d of deliveries ?? []) latestDeliveryByReminder.set(d.reminder_id, d);
+
+  const { data: upcomingPlacements } = await supabase
+    .from("calendula_placements")
+    .select("title, starts_at")
+    .eq("user_id", user.id)
+    .gt("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(3);
+  const nextPlacements = (upcomingPlacements ?? []).map((p) => ({ title: p.title, start: new Date(p.starts_at) }));
+
+  // Group reminders sharing a batch_id (spec §10.5 — "collapsed before
+  // dispatch, rendered as a single digest"). Reminders array is already
+  // sorted newest-first; group membership just needs a stable key.
+  const groups = new Map<string, { id: string; title: string }[]>();
+  const standalone: typeof reminders = [];
+  for (const r of reminders ?? []) {
+    const batchId = latestDeliveryByReminder.get(r.id)?.batch_id;
+    if (batchId) {
+      const list = groups.get(batchId) ?? [];
+      list.push({ id: r.id, title: r.title });
+      groups.set(batchId, list);
+    } else {
+      standalone.push(r);
+    }
   }
 
   return (
@@ -102,8 +131,36 @@ export default async function RemindersPage() {
             <p className="text-xs text-ink-faint">Nothing yet — add one above.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {(reminders ?? []).map((r) => {
-                const nextDelivery = nextDeliveryByReminder.get(r.id);
+              {[...groups.entries()].map(([batchId, members]) => (
+                <li key={batchId} className="pb-3 border-b border-line last:border-0 last:pb-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge tone="info">digest · {members.length} reminders</Badge>
+                    <span className="font-data text-xs text-ink-soft">
+                      {DateTime.fromISO(latestDeliveryByReminder.get(members[0].id)!.scheduled_at, {
+                        zone: timezone,
+                      }).toFormat("ccc h:mma")}
+                    </span>
+                  </div>
+                  <p className="text-sm text-ink mb-2">
+                    {formatDigestMessage(
+                      members.map((m) => m.title),
+                      nextPlacements,
+                      timezone,
+                    )}
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    {members.map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-3 pl-2 border-l-2 border-brand-600">
+                        <span className="text-xs text-ink-soft">{m.title}</span>
+                        <ReminderOutcomeButtons reminderId={m.id} />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+              {standalone.map((r) => {
+                const delivery = latestDeliveryByReminder.get(r.id);
+                const nextDelivery = delivery && !delivery.delivered_at ? delivery.scheduled_at : undefined;
                 return (
                   <li
                     key={r.id}
@@ -111,7 +168,7 @@ export default async function RemindersPage() {
                   >
                     <div>
                       <div className="text-sm font-medium text-ink">{r.title}</div>
-                      <div className="text-xs text-ink-soft mt-0.5 flex items-center gap-2">
+                      <div className="text-xs text-ink-soft mt-0.5 flex items-center gap-2 flex-wrap">
                         <Badge tone="neutral">{KIND_LABEL[r.kind] ?? r.kind}</Badge>
                         <span className="font-data">Importance {r.importance}</span>
                         {r.due_at && (
@@ -126,17 +183,17 @@ export default async function RemindersPage() {
                           </span>
                         )}
                         {r.defer_count > 0 && <span>deferred {r.defer_count}×</span>}
+                        {r.status === "acknowledged" && <Badge tone="info">seen</Badge>}
+                        {nextDelivery && (
+                          <Badge tone="info">
+                            surfaces {DateTime.fromISO(nextDelivery, { zone: timezone }).toFormat("ccc h:mma")}
+                          </Badge>
+                        )}
+                        {!nextDelivery && r.kind === "latent" && <Badge tone="neutral">someday</Badge>}
+                        {!nextDelivery && r.kind !== "latent" && <Badge tone="neutral">not yet scheduled</Badge>}
                       </div>
                     </div>
-                    {nextDelivery ? (
-                      <Badge tone="info">
-                        surfaces {DateTime.fromISO(nextDelivery, { zone: timezone }).toFormat("ccc h:mma")}
-                      </Badge>
-                    ) : r.kind === "latent" ? (
-                      <Badge tone="neutral">someday</Badge>
-                    ) : (
-                      <Badge tone="neutral">not yet scheduled</Badge>
-                    )}
+                    {r.kind !== "latent" && <ReminderOutcomeButtons reminderId={r.id} />}
                   </li>
                 );
               })}

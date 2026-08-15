@@ -5,8 +5,11 @@ import {
   urgency,
   effectiveDeadline,
   assignRemindersCore,
+  applyBatching,
+  formatDigestMessage,
   type AttentionProfile,
   type ReminderCandidate,
+  type ReminderAssignment,
 } from "./reminders";
 import type { Block } from "./grid";
 
@@ -231,5 +234,104 @@ describe("assignRemindersCore (spec §16 Phase 4.5 acceptance)", () => {
     for (const a of assigned) {
       expect(a.blockStart.getTime()).toBeLessThanOrEqual(dueAt.getTime());
     }
+  });
+});
+
+function toAssignment(id: string, blockStart: Date, blockMinutes = 15): ReminderAssignment {
+  return {
+    reminderId: id,
+    blockStart,
+    blockEnd: new Date(blockStart.getTime() + blockMinutes * 60_000),
+    urgency: 0.5,
+    receptivity: 0.85,
+    value: 0.425,
+  };
+}
+
+describe("applyBatching (spec §10.5, Phase 4.6 acceptance)", () => {
+  it("groups three deliveries in the same 20-minute window and free run under one shared batch_id", () => {
+    const blocks = makeBlocks(local(2026, 6, 1, 8, 0), 12, 5); // one contiguous free run, 5-minute blocks
+    const assigned = [
+      toAssignment("a", local(2026, 6, 1, 8, 0), 5),
+      toAssignment("b", local(2026, 6, 1, 8, 5), 5),
+      toAssignment("c", local(2026, 6, 1, 8, 10), 5),
+    ];
+    const batched = applyBatching(assigned, blocks, true);
+    const ids = new Set(batched.map((b) => b.batchId));
+    expect(ids.size).toBe(1);
+    expect([...ids][0]).not.toBeNull();
+  });
+
+  it("does not batch a single delivery alone", () => {
+    const blocks = makeBlocks(local(2026, 6, 1, 8, 0), 12, 5);
+    const assigned = [toAssignment("a", local(2026, 6, 1, 8, 0), 5)];
+    const batched = applyBatching(assigned, blocks, true);
+    expect(batched[0].batchId).toBeNull();
+  });
+
+  it("does not batch deliveries separated by a hard placement (different free runs)", () => {
+    const blocks = makeBlocks(local(2026, 6, 1, 8, 0), 12, 5);
+    blocks[2].state = "hard"; // splits the run between block 1 (8:05) and block 3 (8:15)
+    const assigned = [toAssignment("a", local(2026, 6, 1, 8, 5), 5), toAssignment("b", local(2026, 6, 1, 8, 15), 5)];
+    const batched = applyBatching(assigned, blocks, true);
+    expect(batched.every((b) => b.batchId === null)).toBe(true);
+  });
+
+  it("never batches when batch_by_default is false", () => {
+    const blocks = makeBlocks(local(2026, 6, 1, 8, 0), 12, 5);
+    const assigned = [toAssignment("a", local(2026, 6, 1, 8, 0), 5), toAssignment("b", local(2026, 6, 1, 8, 5), 5)];
+    const batched = applyBatching(assigned, blocks, false);
+    expect(batched.every((b) => b.batchId === null)).toBe(true);
+  });
+});
+
+describe("assignRemindersCore batching interaction (spec §10.5 vs §10.4's min_gap_minutes)", () => {
+  it("lets two reminders land within the batch window even though it's inside min_gap_minutes, when batching is on", () => {
+    const now = local(2026, 6, 1, 8, 0);
+    const blocks = makeBlocks(now, 12, 5); // 5-minute blocks, one free run, well under default min_gap (45m)
+    const candidates = [moment("a", local(2026, 6, 3, 0, 0), 3), moment("b", local(2026, 6, 3, 0, 0), 3)];
+    const assigned = assignRemindersCore(candidates, blocks, defaultProfile, now, {
+      timezone: zone,
+      deliveredCountToday: 0,
+      minutesSinceLastDelivery: null,
+    });
+    // Both tied in value, sorted onto the earliest blocks first — within the
+    // 20-minute batch window of each other, same (only) free run.
+    expect(assigned).toHaveLength(2);
+    const gapMs = Math.abs(assigned[0].blockStart.getTime() - assigned[1].blockStart.getTime());
+    expect(gapMs).toBeLessThan(defaultProfile.minGapMinutes * 60_000);
+  });
+
+  it("still enforces min_gap_minutes when batching is off", () => {
+    const now = local(2026, 6, 1, 8, 0);
+    const blocks = makeBlocks(now, 12, 5);
+    const profile: AttentionProfile = { ...defaultProfile, batchByDefault: false };
+    const candidates = [moment("a", local(2026, 6, 3, 0, 0), 3), moment("b", local(2026, 6, 3, 0, 0), 3)];
+    const assigned = assignRemindersCore(candidates, blocks, profile, now, {
+      timezone: zone,
+      deliveredCountToday: 0,
+      minutesSinceLastDelivery: null,
+    });
+    if (assigned.length === 2) {
+      const gapMs = Math.abs(assigned[0].blockStart.getTime() - assigned[1].blockStart.getTime());
+      expect(gapMs).toBeGreaterThanOrEqual(profile.minGapMinutes * 60_000);
+    }
+  });
+});
+
+describe("formatDigestMessage", () => {
+  it("joins reminder titles and folds in the next placement (spec §10.5 example shape)", () => {
+    const msg = formatDigestMessage(
+      ["grab the charger", "text Dee about the sponsor post"],
+      [{ title: "Gym", start: local(2026, 6, 1, 17, 30) }],
+      zone,
+    );
+    expect(msg).toContain("grab the charger");
+    expect(msg).toContain("text Dee about the sponsor post");
+    expect(msg).toContain("gym's at 5:30pm");
+  });
+
+  it("is empty for no reminders", () => {
+    expect(formatDigestMessage([], [], zone)).toBe("");
   });
 });

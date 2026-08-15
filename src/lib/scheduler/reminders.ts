@@ -163,6 +163,30 @@ function computeBoundaryFlags(blocks: Block[]): boolean[] {
   });
 }
 
+/**
+ * A "free run" (§10.5's batching criterion) — a maximal contiguous stretch
+ * of non-hard-commitment blocks, bounded on both ends by a hard/tentative/
+ * unavailable block (or the edge of the grid). Blocks inside a commitment
+ * get run id -1 — never a delivery candidate anyway, so it's unreachable
+ * there, but explicit rather than left undefined.
+ */
+function computeRunIds(blocks: Block[]): number[] {
+  const isCommitment = (b: Block) => b.state === "hard" || b.state === "tentative" || b.state === "unavailable";
+  let runId = -1;
+  let inRun = false;
+  return blocks.map((b) => {
+    if (isCommitment(b)) {
+      inRun = false;
+      return -1;
+    }
+    if (!inRun) {
+      runId++;
+      inRun = true;
+    }
+    return runId;
+  });
+}
+
 export interface ReminderAssignment {
   reminderId: string;
   blockStart: Date;
@@ -192,11 +216,13 @@ export function assignRemindersCore(
   ctx: AssignmentDeliveryContext,
 ): ReminderAssignment[] {
   const boundaryFlags = computeBoundaryFlags(blocks);
+  const runIds = computeRunIds(blocks);
   const budget = Math.max(0, profile.attentionBudgetPerDay - ctx.deliveredCountToday);
 
   interface Pair {
     reminder: ReminderCandidate;
     block: Block;
+    runId: number;
     value: number;
     u: number;
     rcp: number;
@@ -217,21 +243,34 @@ export function assignRemindersCore(
       if (rcp <= 0.2) return;
       if (deadline && block.start > deadline) return; // never deliver late
       const u = urgency(reminder, block.start);
-      pairs.push({ reminder, block, value: u * rcp, u, rcp });
+      pairs.push({ reminder, block, runId: runIds[i], value: u * rcp, u, rcp });
     });
   }
 
   pairs.sort((a, b) => b.value - a.value);
 
+  const BATCH_WINDOW_MS = 20 * 60_000;
   const assignedReminderIds = new Set<string>();
   const assigned: Pair[] = [];
 
   for (const pair of pairs) {
     if (assignedReminderIds.has(pair.reminder.id)) continue;
     if (assigned.length >= budget && pair.reminder.importance < 5) continue;
-    const tooClose = assigned.some(
-      (a) => Math.abs(a.block.start.getTime() - pair.block.start.getTime()) < profile.minGapMinutes * 60_000,
-    );
+    const tooClose = assigned.some((a) => {
+      const distanceMs = Math.abs(a.block.start.getTime() - pair.block.start.getTime());
+      if (distanceMs >= profile.minGapMinutes * 60_000) return false;
+      // Within min_gap_minutes of an already-assigned delivery — normally
+      // rejected (§10.4), but not when the two would batch into one digest
+      // anyway (same free run, within the 20-minute batching window,
+      // §10.5): they cost one real interruption together, not two spaced
+      // ones, so the spacing rule has nothing to protect against here.
+      // Without this exception, min_gap_minutes' 45-minute default is wider
+      // than the 20-minute batch window, and batching could never trigger
+      // at all under default settings — dead code for a feature the spec
+      // frames as a core value proposition ("batching buys back budget").
+      const batchable = profile.batchByDefault && a.runId === pair.runId && a.runId !== -1 && distanceMs <= BATCH_WINDOW_MS;
+      return !batchable;
+    });
     if (tooClose) continue;
     assigned.push(pair);
     assignedReminderIds.add(pair.reminder.id);
@@ -245,4 +284,88 @@ export function assignRemindersCore(
     receptivity: a.rcp,
     value: a.value,
   }));
+}
+
+export interface BatchedAssignment extends ReminderAssignment {
+  batchId: string | null;
+}
+
+/**
+ * spec §10.5. Runs as a distinct pass *after* assignment, purely for
+ * dispatch grouping — it never changes which reminders got assigned or to
+ * which blocks, only whether several of them fire together as one digest.
+ *
+ * "scheduled_at falls within the same 20-minute window" is read as: sort by
+ * time, anchor a group on the earliest not-yet-grouped delivery, and fold in
+ * every later one within 20 minutes of *that anchor* (and the same run).
+ * Anchoring avoids two failure modes a naive approach hits: fixed
+ * epoch-aligned buckets can split two deliveries 5 minutes apart if they
+ * straddle a bucket edge (worse, in a UTC-offset-and-a-half zone like
+ * America/St_Johns, "8:00 and 8:10 local" don't even land on a clean UTC
+ * 20-minute boundary), and pairwise chaining (each within 20m of the
+ * *previous* one) lets a group drift arbitrarily far from its first member.
+ * "share a receptivity context (same boundary or same free run)" is read as
+ * the same free run (computeRunIds) — a boundary block is, by construction,
+ * always the first or last block of some run, so "same run" already
+ * subsumes "same boundary" in this grid model; there's no case where two
+ * blocks share a boundary without also sharing a run.
+ */
+export function applyBatching(assigned: ReminderAssignment[], blocks: Block[], batchByDefault: boolean): BatchedAssignment[] {
+  if (!batchByDefault) return assigned.map((a) => ({ ...a, batchId: null }));
+
+  const runIdByBlockStart = new Map<number, number>();
+  computeRunIds(blocks).forEach((runId, i) => runIdByBlockStart.set(blocks[i].start.getTime(), runId));
+
+  const withRun = assigned
+    .map((a) => ({ ...a, runId: runIdByBlockStart.get(a.blockStart.getTime()) ?? -1 }))
+    .sort((a, b) => a.blockStart.getTime() - b.blockStart.getTime());
+
+  const WINDOW_MS = 20 * 60_000;
+  const result: BatchedAssignment[] = [];
+  let i = 0;
+  while (i < withRun.length) {
+    const anchor = withRun[i];
+    const group = [anchor];
+    let j = i + 1;
+    while (
+      j < withRun.length &&
+      withRun[j].runId === anchor.runId &&
+      withRun[j].blockStart.getTime() - anchor.blockStart.getTime() <= WINDOW_MS
+    ) {
+      group.push(withRun[j]);
+      j++;
+    }
+    const batchId = group.length >= 2 ? crypto.randomUUID() : null;
+    for (const a of group) result.push({ ...a, batchId });
+    i = j;
+  }
+  return result;
+}
+
+/**
+ * spec §10.5: "digest rendering is an LLM edge job (Haiku), given the
+ * grouped reminders plus the next three placements." Not available without
+ * ANTHROPIC_API_KEY (unset) — same deterministic-fallback treatment as
+ * `formatOfferMessage` in meetingOffers.ts. Swap in a Haiku call once a key
+ * exists; keep this as the always-available honest default.
+ */
+export function formatDigestMessage(
+  reminderTitles: string[],
+  nextPlacements: { title: string; start: Date }[],
+  timezone: string,
+): string {
+  if (reminderTitles.length === 0) return "";
+  const items = [...reminderTitles];
+  if (nextPlacements.length > 0) {
+    const next = nextPlacements[0];
+    const time = DateTime.fromJSDate(next.start, { zone: timezone }).toFormat("h:mma").toLowerCase();
+    items.push(`${next.title.toLowerCase()}'s at ${time}`);
+  }
+  const joined =
+    items.length === 1
+      ? items[0]
+      : items.length === 2
+        ? `${items[0]} and ${items[1]}`
+        : `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+  return `${joined}.`;
 }

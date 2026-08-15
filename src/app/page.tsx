@@ -70,22 +70,29 @@ const BUILT_PHASES = [
     howToTest: [
       "Go to Reminders.",
       "Use \"Add a reminder\" — kind \"Moment\", a title, and a due time about an hour and a half from now.",
-      "Expected: within a few seconds it shows a \"surfaces\" badge with a time before your due time — never after it.",
-      "Add a second one with kind \"Someday\" (no due time).",
-      "Expected: it shows a \"someday\" badge instead — it never gets a scheduled surface time, and never uses up a budget slot.",
+      "It won't get a surface time immediately — that only happens on a solve or the 15-minute reminder cron. Go to Week and add any task (that triggers a solve), then go back to Reminders.",
+      "Expected: it now shows a \"surfaces\" badge with a time before your due time — never after it.",
+      "Add a second one with kind \"Someday\" (no due time) — expected: it shows a \"someday\" badge instead, never a surface time, and never uses up a budget slot.",
+    ],
+  },
+  {
+    id: "phase-4-6",
+    name: "Phase 4.6 — Batching and outcome capture",
+    detail: "Groups reminders that land close together into one digest instead of several separate nudges, and lets you act on one (done, seen, later, dismiss). Real push notifications are intentionally deferred — see below.",
+    howToTest: [
+      "Go to Reminders and add three reminders (kind \"Moment\") all with the same due time, a couple hours out — leave the page between each so all three save.",
+      "Trigger a solve (add any task on Week), then go back to Reminders.",
+      "Expected: the three collapse into one \"digest\" card with a single plain-English sentence naming all three, each still with its own Done/Seen/Later/Dismiss buttons.",
+      "Click Dismiss on one.",
+      "Expected: it drops out immediately and the other two stay grouped together.",
     ],
   },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 4.6 — Batching and push",
-    status: "next" as const,
-    detail: "Groups reminders that land close together into one nudge instead of several, and adds real push delivery.",
-  },
-  {
     name: "Phase 5 — Planning ahead",
-    status: "later" as const,
+    status: "next" as const,
     detail: "Helps you plan and protect multi-day trips or events weeks or months in advance.",
   },
   {
@@ -116,7 +123,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Six pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, and reminders. Batching, push, and beyond are still ahead. Click a phase below to try it yourself and say whether it actually works."
+        lead="Seven pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, and digest batching. Planning ahead and beyond are still ahead — real push notifications are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

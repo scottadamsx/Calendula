@@ -322,6 +322,102 @@ delivery row for the moment reminder, confirming the "skip reminders with an
 already-scheduled, undelivered delivery" rule prevents the 15-minute cron
 (and every solve) from piling up duplicate rows for the same reminder.
 
+## Phase 4.6 — batching and outcome capture
+
+Scoped down from the full spec by explicit choice, not silently: batching
+(§10.5), digest rendering, and outcome capture (§10.8) are built; real web
+push is deferred. The spec names "web push" as a Phase 4.6 deliverable but
+never defines a subscription schema, VAPID setup, or dispatcher for it —
+unlike every other gap resolved so far in this file (an already-referenced
+helper missing its body, an omitted column), this is a whole missing
+subsystem, so it was escalated rather than silently designed around. Asked;
+the answer was to build batching/digest/outcome capture now and defer push,
+the same treatment as the `ANTHROPIC_API_KEY` and Google OAuth blockers in
+Phase 6/7. Revisit when push is actually wanted — it doesn't need an
+external account (VAPID keys are self-generatable), so it isn't blocked the
+same way those two are, just deliberately not built yet.
+
+`applyBatching()` in `reminders.ts` (pure, spec §10.5) groups an
+`assignRemindersCore()` result into shared-`batch_id` digests: sort by time,
+anchor a group on the earliest ungrouped delivery, fold in every later one
+within 20 minutes of *that anchor* sharing the same free run
+(`computeRunIds()` — a maximal contiguous stretch of non-hard-commitment
+blocks). `formatDigestMessage()` is the same kind of deterministic fallback
+as `formatOfferMessage`/Phase 4's message rendering — no `ANTHROPIC_API_KEY`
+for the spec's described Haiku digest job.
+
+**Batching's own spec section contradicts the assignment algorithm's own
+spacing rule, and shipping it required resolving that first.**
+`assignRemindersCore`'s `min_gap_minutes` check (§10.4, default 45 minutes)
+rejects any two deliveries closer together than that — categorically wider
+than batching's 20-minute grouping window, so under default settings
+batching could never trigger at all: nothing can ever land close enough to
+group in the first place. Resolved by exempting deliveries that would batch
+anyway (same free run, within the 20-minute window, `batch_by_default` on)
+from the spacing rejection — they cost one real interruption together, not
+two spaced-out ones, so the spacing rule has nothing left to protect
+against. Without this, "batching buys back budget" (§10.5's own stated
+payoff) would be dead on arrival.
+
+**A second, worse batching bug was found live, not by reasoning about the
+spec text — Phase 4.5's own "assign immediately on creation" convenience
+made batching structurally impossible in practice.** `createReminder()`
+called `assignReminders()` synchronously right after every single insert,
+so each reminder was always the lone candidate in its own assignment pass —
+two reminders can only share a digest if the *same* `assignReminders()`
+call sees both as candidates together, and a solo pass never does. Caught
+live: three reminders created back-to-back with identical due times landed
+two of them on the exact same scheduled block, with `batch_id` still null
+on both, because each was assigned alone before the next one existed.
+Fixed by removing the immediate per-creation call entirely — assignment now
+only runs where the spec actually says it does, "on every solve and on a
+fifteen-minute cron" (§10.4), never on reminder creation itself. Re-tested:
+three reminders created in quick succession, left genuinely pending until
+one `assignReminders()` cron pass processed all three together, correctly
+produced one shared `batch_id` across all three deliveries.
+
+`deliveredCountToday` (the running total the next assignment pass checks
+against the daily budget) now counts distinct batches, not raw delivery
+rows — `new Set(rows.map(r => r.batch_id ?? r.id)).size` — so a 3-reminder
+digest correctly counts as one spent interruption, not three, matching
+§10.5's own framing ("seven reminders delivered as three digests costs
+three interruptions, not seven").
+
+**Outcome capture** (`recordReminderOutcome` in `src/app/actions/
+reminders.ts`) maps acknowledge/defer/done/dismiss to `reminders.status`
+(no `'deferred'` value exists in the schema's own enum, so deferring goes
+back to `'pending'` with `defer_count` incremented, re-queueing it for
+reassignment at a — per §10.3 — now-higher urgency) and stamps the
+reminder's most recent delivery with the outcome. Since no push dispatcher
+exists yet, the Reminders page is the only delivery surface — clicking an
+outcome button on a still-undelivered scheduled reminder *is* the delivery
+event, so `delivered_at` is set there if it wasn't already, rather than
+waiting on a dispatch step that has nothing to dispatch through. "Three
+consecutive dismissals prompt deletion" (§10.8) is not built — it's
+advisor-adjacent proactive behavior with no natural home before Phase 6
+exists, and isn't part of this phase's own §16 acceptance criteria.
+
+Known, documented limitation, not fixed this phase: `min_gap_minutes`
+spacing (and by extension batching) is only enforced *within* a single
+`assignReminders()` call, not against deliveries a *different* call already
+scheduled moments earlier for a different reminder. Two reminders created
+far enough apart to each trigger their own cron/solve-driven assignment
+pass could still end up closer together than `min_gap_minutes` intends.
+Fixing it means passing already-scheduled-but-undelivered deliveries from
+other reminders into the assignment pass as spacing/batching seeds — a
+real, scoped fix, just not one required by this phase's own acceptance
+criteria, so it wasn't pulled in speculatively.
+
+Verified live: three reminders created back-to-back (left pending, no
+immediate assignment per the fix above), one cron pass batched all three
+under a shared `batch_id`, the Reminders page rendered them as a single
+digest card with the deterministic message and one outcome-button row per
+reminder. Dismissing one dropped it out of the pending list and the digest
+correctly re-rendered with the remaining two still grouped; the DB showed
+`delivered_at` and `outcome: 'dismissed'` set on just that one delivery.
+Re-running the cron afterward returned `assignedCount: 0` — no duplicate
+rows for the two still-pending, still-batched reminders.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
