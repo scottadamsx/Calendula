@@ -8,6 +8,7 @@ import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { AddTaskForm } from "@/components/tasks/AddTaskForm";
 import { AddHabitForm } from "@/components/tasks/AddHabitForm";
+import { AddFixedBlockForm } from "@/components/tasks/AddFixedBlockForm";
 import type { MergedPlacement } from "@/lib/scheduler/grid";
 
 const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -144,6 +145,7 @@ export default async function WeekPage({
       />
 
       <div className="mb-4 flex flex-col gap-4">
+        <AddFixedBlockForm />
         <AddTaskForm />
         <AddHabitForm />
       </div>

@@ -66,8 +66,12 @@ blocked-task: <phase/task>
   `fixed_blocks` row for a horizon window via `expandFixedBlock` and upserts hard
   `placements` rows, keyed on `(user_id, source_type, source_id, starts_at)` — a
   unique index added in `supabase/migrations/20260727010000_placements_upsert_key.sql`
-  — so re-running it is idempotent. Not yet wired to run automatically (no cron or
-  on-create/update trigger calls it yet); that's the next open item, not this one.
+  — so re-running it is idempotent. **Now wired**: `createFixedBlock`
+  (`src/app/actions/fixedBlocks.ts`) calls it on-create, and
+  `/api/cron/sync-fixed-blocks` (`vercel.json`, nightly) iterates every user via
+  `activeUsers()` and re-syncs — not one of the spec's three named crons (§13),
+  a minor necessary addition. Verified live: idempotency confirmed by hitting the
+  route twice and checking the placement count didn't double.
 
 ## RRULE expansion — the one non-obvious piece of Phase 1
 
