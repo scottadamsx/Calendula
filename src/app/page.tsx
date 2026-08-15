@@ -100,13 +100,24 @@ const BUILT_PHASES = [
       "Expected: it moves into the \"Held\" list below, and a dark block for it appears on Week for those days. Click Release to undo it.",
     ],
   },
+  {
+    id: "phase-6",
+    name: "Phase 6 — Advisor and reconciliation",
+    detail: "Checks whether things actually happened the way they were scheduled, learns how long your work really takes, and surfaces what's overloaded or drifting. No ANTHROPIC_API_KEY configured, so this reads as plain deterministic text, not AI-polished prose — the facts underneath are real either way.",
+    howToTest: [
+      "Go to Check-in — anything the solver placed that's already passed shows up here. Log five or more as \"Different…\" with a consistently longer actual time than planned (e.g. planned 60, actual 90 each time).",
+      "Expected: after five, a message on Advisor reads something like \"You usually run 1.5× on [category].\"",
+      "Go to Advisor and use \"Add a person\" with a cadence of 1 day, leave it — expected: a drift line appears immediately (\"You and X are... out\").",
+      "Click \"We talked today\" — expected: that line disappears.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 6 — Daily summary",
+    name: "Phase 6.5 — Promotion loop and derived reminders",
     status: "next" as const,
-    detail: "A daily written summary of what's going on, and learning from how long things actually take you.",
+    detail: "Notices when a recurring reminder is really a task in disguise, and generates reminders automatically from other layers (like an upcoming camping trip or someone falling out of touch).",
   },
   {
     name: "Phase 7 — Google Calendar import",
@@ -131,7 +142,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Eight pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, and defending time for future plans. Daily summaries and beyond are still ahead — real push notifications are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
+        lead="Nine pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, defending time for future plans, and reconciliation. Promotion loops and beyond are still ahead — real push notifications and AI-polished prose are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

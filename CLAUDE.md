@@ -492,6 +492,62 @@ changing, mid-session) task/placement state proved too fragile to pin down
 reliably in the time available; worth a deliberate live repro attempt if
 this path is ever reported as buggy.
 
+## Phase 6 — advisor and reconciliation
+
+Split cleanly along the design thesis (§1: "deterministic solvers, LLM only
+at the edges"), and the spec's own phrasing makes the split explicit: §11
+opens with "the LLM layer" but its own signals table is entirely SQL/grid
+queries — only the *prose* is LLM work. Built: `calibration.ts` (pure —
+`computeMultiplier`, median-based, spec §12) + `runCalibration.ts` (nightly
+job, new cron, not one of §13's three named ones — same minor-addition tier
+as the fixed-blocks sync cron) + `src/app/actions/completions.ts` (the
+daily check-in) + new `/checkin` page; `advisorSignals.ts` (pure — ranking,
+deterministic prose fallbacks) + `getAdvisorSignals.ts` (the eight §11
+signal queries) + `src/app/actions/people.ts` + new `/advisor` page. Not
+built: the actual Haiku/Sonnet/Opus model routing (§11's "model routing")
+and the daily brief — flagged the same way as Phase 6's other
+`ANTHROPIC_API_KEY`-gated pieces, not routed around. The advisor page says
+so directly at the top rather than silently passing off deterministic text
+as the real thing.
+
+**Two spec references don't resolve against the actual schema, both
+resolved as documented defaults (interpretation gaps, not missing
+subsystems — not escalated):**
+
+1. `duration_calibration` has no history — only the current multiplier.
+   §11's "estimate drift" trigger ("multiplier moved > 20%") reads as a
+   run-over-run delta the schema can't express. Read instead as drift from
+   the neutral 1.0 baseline (`abs(multiplier - 1.0) > 0.2`) — matches the
+   spec's own example verbatim ("You usually run 1.4× on coursework" is
+   exactly a 40% drift from 1.0).
+2. `habits` has no `category_id` column at all (§5.4) — calibration is
+   "nightly per category," so habit completions are logged (the check-in
+   covers both sources per spec) but structurally can't feed the
+   multiplier; only task completions do. Not a bug, just what the schema
+   allows.
+
+**Priority convention, confirmed against existing code before use, not
+assumed:** §11 says overload proposals rank "priority ascending, slack
+descending." `solveCore.ts` already established (Phase 2) that higher
+priority *numbers* place first — so priority-ascending here correctly means
+suggesting the *least* important task to drop first, not the most
+important one. Checked against `solveCore.ts`'s own sort before writing
+`rankOverloadTasks`, rather than guessing from the column name alone.
+
+Verified live against the real connected project, calibration end to end:
+seeded a past placement, checked it in through the real `/checkin` UI with
+a custom actual-minutes value (real completion row confirmed: planned 100,
+actual 150), seeded four more completions directly to reach the 5-sample
+floor, ran the calibration cron — `duration_calibration` showed
+`multiplier: 1.5, sample_size: 5` (median of the five ratios), and the
+Advisor page rendered "You usually run 1.5× on TEST Calibration." exactly.
+Relationship drift: added a person with a 1-day cadence and no prior
+interaction — drifted immediately, correctly showed "nothing open nearby"
+with no social-labelled energy window configured; added one, and the exact
+same person then showed a real costed free slot ("Saturday 6:15pm is open
+and costs you nothing," §11's own example shape). Logging the interaction
+cleared the drift signal on the next load. All test data cleaned up after.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
