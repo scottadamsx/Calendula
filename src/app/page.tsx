@@ -51,17 +51,24 @@ const BUILT_PHASES = [
       "If the week genuinely has no room left, the message says how many sessions couldn't fit instead of silently dropping them.",
     ],
   },
+  {
+    id: "phase-4",
+    name: "Phase 4 — \"When are you free?\"",
+    detail: "Suggests real meeting times when someone asks, without double-booking you or letting something else fill the slot overnight.",
+    howToTest: [
+      "Go to Meetings.",
+      "Use \"Find a time\" — a purpose, a duration like 60 minutes, and a horizon of a week.",
+      "Expected: up to 3 slots come back, each on a different day, with a plain-English message you could paste into a text.",
+      "Click Confirm on one of them.",
+      "Expected: that slot turns into a real meeting on Week (dark block), and the other offered slots disappear instead of staying held.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 4 — \"When are you free?\"",
-    status: "next" as const,
-    detail: "Suggests real meeting times when someone asks, without double-booking you or backfilling the slot overnight.",
-  },
-  {
     name: "Phase 4.5 — Smart reminders",
-    status: "later" as const,
+    status: "next" as const,
     detail: "Nudges you about things at the right moment instead of bombarding you with notifications.",
   },
   {
@@ -97,7 +104,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Four pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, and habits. Meetings and reminders are still ahead. Click a phase below to try it yourself and say whether it actually works."
+        lead="Five pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, and finding meeting times. Reminders and beyond are still ahead. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

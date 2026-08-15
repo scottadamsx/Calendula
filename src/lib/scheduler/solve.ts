@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { computeGrid, type Block, type SourceType } from "./grid";
 import { solveCore, type TaskInput } from "./solveCore";
@@ -15,9 +16,22 @@ import type { EnergyLabel, SolveOptions, SolveResult } from "./types";
  *
  * `derivedReminders` (Phase 6.5) is always empty — honest about what's
  * actually implemented, not a placeholder lie.
+ *
+ * Third parameter is a minor addition beyond the spec's literal §7.1
+ * signature: `solve()` defaults to the cookie-bound client (a real request
+ * made on behalf of a signed-in browser session), but crons re-solving on
+ * behalf of *other* users (e.g. after expiring a meeting offer) have no such
+ * session — they must pass a service-role client explicitly. Silently
+ * falling back to the cookie client in that context wouldn't crash, it would
+ * just see an unauthenticated session and RLS would return zero rows for
+ * everything, which is a much worse failure mode than a clear error.
  */
-export async function solve(userId: string, opts?: SolveOptions): Promise<SolveResult> {
-  const supabase = await createClient();
+export async function solve(
+  userId: string,
+  opts?: SolveOptions,
+  client?: SupabaseClient,
+): Promise<SolveResult> {
+  const supabase = client ?? (await createClient());
   const dryRun = opts?.dryRun ?? false;
 
   // None of these five reads depend on each other, so they run concurrently

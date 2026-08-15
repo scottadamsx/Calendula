@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { solve } from "./solve";
 import type { SolveResult } from "./types";
 
@@ -7,6 +8,7 @@ interface PendingSolve {
   timer: ReturnType<typeof setTimeout>;
   resolvers: Array<(result: SolveResult) => void>;
   trigger: string;
+  client?: SupabaseClient;
 }
 
 /**
@@ -20,13 +22,24 @@ interface PendingSolve {
  */
 const pending = new Map<string, PendingSolve>();
 
-export async function requestSolve(userId: string, trigger: string): Promise<SolveResult> {
+/**
+ * `client` (optional, defaults to the cookie-bound session) is a minor
+ * addition beyond §7.1's literal signature — see solve.ts's own comment.
+ * Crons re-solving on behalf of a user with no active browser session pass
+ * a service-role client explicitly.
+ */
+export async function requestSolve(
+  userId: string,
+  trigger: string,
+  client?: SupabaseClient,
+): Promise<SolveResult> {
   return new Promise((resolve) => {
     const existing = pending.get(userId);
     if (existing) {
       clearTimeout(existing.timer);
       existing.resolvers.push(resolve);
       existing.trigger = trigger;
+      if (client) existing.client = client;
       existing.timer = setTimeout(() => fire(userId), DEBOUNCE_MS);
       return;
     }
@@ -34,6 +47,7 @@ export async function requestSolve(userId: string, trigger: string): Promise<Sol
     pending.set(userId, {
       resolvers: [resolve],
       trigger,
+      client,
       timer: setTimeout(() => fire(userId), DEBOUNCE_MS),
     });
   });
@@ -43,6 +57,6 @@ async function fire(userId: string) {
   const entry = pending.get(userId);
   if (!entry) return;
   pending.delete(userId);
-  const result = await solve(userId, { trigger: entry.trigger });
+  const result = await solve(userId, { trigger: entry.trigger }, entry.client);
   entry.resolvers.forEach((resolve) => resolve(result));
 }

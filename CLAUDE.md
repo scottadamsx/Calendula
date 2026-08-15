@@ -168,6 +168,68 @@ this was invisible to unit tests and only surfaced from a real click against a
 real remote database — check request timing, not just correctness, when testing
 live.
 
+## Phase 4 — meeting offers
+
+`meetingOffers.ts` (pure candidate generation/scoring, spec §9.1) + `findMeetingSlots.ts`
+(DB wrapper — calls `solve(dryRun: true)` once for a baseline, then a dry-run
+`solve` per candidate for `displacementCost`, per spec §7.5). `src/app/actions/
+meetings.ts` covers offer creation, confirm, and the hourly expiry cron — one of
+the spec's three explicitly named crons (§13).
+
+**`sumSlackDelta` is referenced but never defined in the spec** (§7.5's
+pseudocode calls it without a body). Interpretation, documented in
+`meetingOffers.ts`: for each task at risk *after* excluding the candidate range,
+how much worse is its slack than before; a task not previously at-risk is
+assumed to have been sitting right at the 120-minute threshold, so its drop
+below that counts as loss; an *improved* task contributes nothing (excluding
+time can't help anything, so this shouldn't occur in practice). Not escalated
+as a SPEC-GAP since it's filling in an already-referenced helper, not a
+structural ambiguity — but flagged here in case the intent was different.
+
+Minor interface addition beyond §9.1's literal signature: `location?: string`
+in `findMeetingSlots`'s opts. `meeting_offers` has no location column and
+neither does the pinned opts type, but `travelFeasible`'s own scoring term
+(the spec's own "downtown coffee at 4:15" example) is meaningless without one
+— optional, never persisted, used only to score a given search.
+
+§9.3's message rendering ("Thursday after 2, Friday morning...") implies an
+LLM polish pass per the design thesis, not available without
+`ANTHROPIC_API_KEY` (unset). `formatOfferMessage` is the deterministic
+fallback — plain, correct, always available. Swap in a Haiku call once a key
+exists; don't remove the deterministic path, it's the honest default.
+Inbound-message parsing ("hey can we grab food next week?" → offer
+parameters) is explicitly LLM-dependent too and wasn't built for the same
+reason — the create-offer flow is a structured form instead.
+
+**Two real bugs found live** (not caught by 13 passing unit tests), both fixed:
+
+1. **`placement_id` was silently `null` on every meeting_offer_slot.** The
+   insert tried to match returned placement rows back to their slots by
+   comparing `starts_at` strings — but Postgres's returned timestamptz
+   formatting (`...+00:00`) never equals JS's `toISOString()` (`...Z`), so
+   the lookup map missed every time. Confirming an offer is *gated* on
+   `placement_id` being set, so this meant confirming an offer never actually
+   promoted the chosen placement to hard — it silently stayed tentative
+   forever. Fixed by zipping the insert results to their slots by array
+   index (a single bulk insert with `RETURNING` preserves input order)
+   instead of matching by string.
+2. **Day-spread was structurally impossible once one day had enough free
+   time.** `findCandidateStarts`' pre-filter capped at 20 candidates in
+   flat chronological order; a single wide-open day can produce far more
+   than 20 raw 15-minute-aligned candidates on its own, so the cap was
+   sometimes exhausted before the search ever reached a second day —
+   leaving `selectGreedy`'s "skip a day already represented" rule nothing
+   from any other day to fall back to. "Day-spread is enforced, not
+   optional" (spec §9.1) requires diversity to survive the *pre-filter*,
+   not just be attempted after it. Fixed by round-robining across days
+   when building the top-20 instead of taking a flat cut. Regression test
+   in `meetingOffers.test.ts` proves a week of wide-open blocks still
+   produces candidates on more than one day.
+
+Both were invisible to unit tests that exercised each piece in isolation —
+only a live offer against real, mostly-empty calendar data (one day with
+tons of free time) reproduced them.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
