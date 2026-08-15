@@ -87,17 +87,25 @@ const BUILT_PHASES = [
       "Expected: it drops out immediately and the other two stay grouped together.",
     ],
   },
+  {
+    id: "phase-5",
+    name: "Phase 5 — Planning ahead",
+    detail: "Finds and defends good multi-day windows for things like camping trips, months in advance — an empty weekend isn't a free weekend if coursework is about to land there.",
+    howToTest: [
+      "Go to Planning.",
+      "Use \"Add an activity type\" — e.g. Camping, 48 hours minimum, requires overnight checked.",
+      "Use \"Find a window\" — pick that activity, a horizon of 30-90 days.",
+      "Expected: up to 3 day-range options come back, each at least a week apart, with a score and a load percentage.",
+      "Click \"Hold this window\" on one.",
+      "Expected: it moves into the \"Held\" list below, and a dark block for it appears on Week for those days. Click Release to undo it.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 5 — Planning ahead",
-    status: "next" as const,
-    detail: "Helps you plan and protect multi-day trips or events weeks or months in advance.",
-  },
-  {
     name: "Phase 6 — Daily summary",
-    status: "later" as const,
+    status: "next" as const,
     detail: "A daily written summary of what's going on, and learning from how long things actually take you.",
   },
   {
@@ -123,7 +131,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Seven pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, and digest batching. Planning ahead and beyond are still ahead — real push notifications are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
+        lead="Eight pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, and defending time for future plans. Daily summaries and beyond are still ahead — real push notifications are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

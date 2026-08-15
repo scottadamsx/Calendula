@@ -418,6 +418,80 @@ correctly re-rendered with the remaining two still grouped; the DB showed
 Re-running the cron afterward returned `assignedCount: 0` — no duplicate
 rows for the two still-pending, still-batched reminders.
 
+## Phase 5 — future window planner
+
+`futureWindows.ts` (pure — `projectedLoadCore`, `deadlineProximityWeight`,
+`findCandidateWindows`, `scoreCandidateWindow`, `selectTopWindows`, spec
+§8.1/§8.2) + `projectedLoad.ts` (DB wrapper, day-granularity load
+aggregation) + `findFutureWindows.ts` (DB wrapper, orchestrates the search)
++ `src/app/actions/activityHolds.ts` (activity-type creation, window search,
+hold, release). New `/planning` page.
+
+**`weatherScore` has no real data source, flagged rather than faked.** The
+spec references "forecast if within 10 days, else climate normals" with no
+provider named anywhere. A real forecast/climate-normals feed needs an
+external API account — the same class of blocker as `ANTHROPIC_API_KEY` and
+Google OAuth (flagged, not routed around), unlike Phase 4.6's push (which
+didn't need one). Falls back to a neutral `WEATHER_SCORE_FALLBACK = 0.5`,
+gated on `weather_sensitive` (the spec's own pseudocode never references
+that column otherwise, which would leave it unused — reading it as a gate
+is the only way it does anything).
+
+**Recovery debt's spec text and its own schema don't line up, resolved as a
+formula default (not escalated — an interpretation gap, not a missing
+subsystem like Phase 4.6's push).** §8.1: "any `high_exertion` placement
+adds load across the following `buffer_after_hours`" — but `high_exertion`
+lives only on `fixed_blocks`, and `buffer_after_hours` lives only on
+`activity_types` (via `activity_holds`); no single row type carries both.
+Resolved: `activity_holds` use their own `activity_type.buffer_after_hours`
+directly (it's already there for exactly this); `fixed_blocks` with
+`high_exertion = true` use a documented default of 24 hours — a full day of
+reduced capacity, and already this project's established "one day" unit
+(`freeze_window_hours`'s own default).
+
+**`requires_overnight` was otherwise dead data**, referenced nowhere in
+§8.2's pseudocode despite existing on `activity_types` — used here to floor
+a candidate window's length at 2 calendar days even when
+`ceil(min_duration_hours / 24)` alone would round to 1 (e.g. a
+20-hour-but-overnight activity).
+
+Far-future days (months out) can't rely on the `placements` table for hard
+commitments — the fixed-block sync cron only carries a much shorter horizon
+(the Phase 1 SPEC-GAP resolution). `projectedLoad.ts` re-expands
+`fixed_blocks` fresh via the existing pure `expandFixedBlock()` for whatever
+range it's asked about, rather than depending on what's already synced —
+avoids both inflating `placements` with months of speculative rows and
+under-counting commitments beyond the sync horizon.
+
+**Defended holds (§8.3) commit immediately and report the consequence,
+rather than a true preview-before-commit flow.** The spec's own dialogue
+example ("Still want it? ") reads like a confirm-first UX, but building
+genuine preview means teaching `solve()`'s dry-run mode to simulate a
+*hypothetical* extra hard placement that doesn't exist yet — a real,
+scoped extension, just not one required by the phase's own acceptance
+criterion ("the conflict surfaces when the hold makes work unplaceable" —
+which says nothing about asking permission first). Simpler and still fully
+compliant: insert the hold for real, re-solve for real, diff the
+before/after `unplaceable` sets (the exact same baseline-vs-after idiom as
+Phase 4's `displacementCost`), and report anything newly pushed out of room
+by name — with `releaseActivityHold` as the way back out if the user
+doesn't like what they see.
+
+Verified live against the real connected project: created an activity type,
+searched a real horizon, got three candidate windows correctly spaced at
+least 7 days apart, held one — a real `activity_holds` row and a real hard
+`placements` row both persisted correctly, linked by id. Released it — the
+placement was deleted, the hold's status flipped to `released`, and it
+correctly stopped affecting the recovery-debt calculation on the next load
+computation. The "everything else still fits" branch was directly
+exercised this way. The "newly unplaceable" branch is code-identical in
+shape to Phase 4's already-live-verified `displacementCost` comparison and
+was reviewed, not independently reproduced live — engineering a *guaranteed*
+conflict against the real, shared account's actual (and constantly
+changing, mid-session) task/placement state proved too fragile to pin down
+reliably in the time available; worth a deliberate live repro attempt if
+this path is ever reported as buggy.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,

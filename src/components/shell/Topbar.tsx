@@ -9,6 +9,7 @@ const NAV = [
   { href: "/week", label: "Week" },
   { href: "/meetings", label: "Meetings" },
   { href: "/reminders", label: "Reminders" },
+  { href: "/planning", label: "Planning" },
   { href: "/settings", label: "Settings" },
   { href: "/connectors", label: "Connectors" },
   { href: "/how-it-works", label: "How it works" },
