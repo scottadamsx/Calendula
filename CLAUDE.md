@@ -616,6 +616,61 @@ derived-reminder cron — a real "Book TEST Skiing" reminder appeared with
 the derived reminder's `status` flipped to `'dismissed'` on the next
 load, exactly as specified. All test data cleaned up after.
 
+## Phase 7 — Google Calendar import (partial — genuinely blocked, not routed around)
+
+Split cleanly along what does and doesn't need live credentials, the same
+principle as every other external-dependency gap in this project.
+**Built**: `googleCalendarSync.ts` — pure reconciliation (spec §16's exact
+acceptance criteria: "re-import is idempotent," "events deleted upstream
+are removed locally") — plus `syncGoogleCalendarEvents.ts`, the DB wrapper
+that applies a reconciliation plan to real `fixed_blocks` rows, re-syncs
+`placements`, and re-solves. **Not built**: the actual OAuth authorization
+flow, token storage/refresh, and the Google Calendar API fetch itself
+(`POST /api/calendar/import`, spec §13). No Google Cloud OAuth app exists —
+that needs a real Google account creating a project and OAuth credentials
+in the Google Cloud Console, the same class of blocker as
+`ANTHROPIC_API_KEY`, and something only Scotty can do. Unlike an
+LLM-gated feature, there's no meaningful deterministic fallback for "pull
+real calendar data" — so rather than write untested OAuth/token-exchange
+code (the one thing every other phase in this project explicitly avoided —
+"verify before done" is the single most-repeated lesson in this file),
+`applyGoogleCalendarSync` takes an already-fetched `GoogleEvent[]` and stops
+there. That's exactly where a real `/api/calendar/import` route would hand
+off once credentials exist. Settings gained `GOOGLE_CLIENT_ID`/
+`GOOGLE_CLIENT_SECRET` status rows; Connectors' existing Google Calendar
+card (already present, previously just "Not yet available" with a dead
+button) now reads credential presence honestly and explains exactly what's
+missing, matching the Supabase card's own pattern.
+
+**A real bug found live while verifying this, in code that predates this
+phase.** `syncFixedBlockPlacements` (Phase 1) upserts placements keyed on
+`(user_id, source_type, source_id, starts_at)` — correct for a block that's
+merely re-synced unchanged, but when a block's *time itself* changes (a
+Google Calendar edit is the first real path that ever does this — nothing
+in Phases 1-6 ever mutated an existing fixed_block's `starts_at`), the
+changed time is a *different* conflict key, so the upsert inserts a second
+placement alongside the now-stale original instead of replacing it. Caught
+by directly testing `applyGoogleCalendarSync` against the live database
+with synthetic event data (via `tsx`, service-role client, no OAuth
+needed): moved an event by an hour, then queried `calendula_placements` by
+title and found two rows — the same block hard-committed at both its old
+and new time simultaneously. Fixed by sweeping every affected block's
+in-window placements after the upsert and deleting whichever no longer
+match a currently-valid occurrence time (compared by parsed timestamp, not
+raw string — Postgres's `+00:00` vs. JS's `toISOString()` `Z` never string-
+match, the identical bug class already hit once in Phase 4's meeting-offer
+slots). Re-verified after the fix: exactly one placement row survives a
+moved event, at the correct new time.
+
+Verified live against the real database (no dev server needed — the
+reconciliation and sync logic take pre-fetched event data, so this doesn't
+depend on OAuth at all): inserted two synthetic events, re-ran the exact
+same input and got an all-zero plan (idempotent, confirmed against real
+rows, not just unit-test fixtures), moved one event an hour and got exactly
+one update, removed the other event from the input entirely and got exactly
+one delete — both of the phase's own acceptance criteria, proven against
+live data. All test rows cleaned up after.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,

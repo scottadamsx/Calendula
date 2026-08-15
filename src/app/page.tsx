@@ -129,7 +129,7 @@ const UPCOMING_PHASES = [
   {
     name: "Phase 7 — Google Calendar import",
     status: "next" as const,
-    detail: "Pulls your existing Google Calendar events in automatically. One-way only — never edits Google Calendar itself.",
+    detail: "Pulls your existing Google Calendar events in automatically. One-way only — never edits Google Calendar itself. Partially built: the import/update/delete reconciliation logic is done and tested against real data, but it's blocked on a Google Cloud OAuth app — see Connectors for status.",
   },
 ];
 

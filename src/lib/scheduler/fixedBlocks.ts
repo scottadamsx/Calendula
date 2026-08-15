@@ -137,12 +137,50 @@ export async function syncFixedBlockPlacements(
     }));
   });
 
-  if (rows.length === 0) return { synced: 0 };
+  // Every current occurrence's starts_at, per block — including blocks with
+  // zero occurrences in [from, to) right now, so their previously-synced
+  // placements still get cleaned up below.
+  const validStartsAtByBlock = new Map<string, Set<number>>();
+  for (const block of fixedBlocks ?? []) validStartsAtByBlock.set(block.id, new Set());
+  for (const r of rows) validStartsAtByBlock.get(r.source_id)!.add(new Date(r.starts_at).getTime());
 
-  const { error: upsertError } = await supabase
-    .from("calendula_placements")
-    .upsert(rows, { onConflict: "user_id,source_type,source_id,starts_at" });
+  if (rows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("calendula_placements")
+      .upsert(rows, { onConflict: "user_id,source_type,source_id,starts_at" });
+    if (upsertError) throw upsertError;
+  }
 
-  if (upsertError) throw upsertError;
+  // A real bug found live: when a block's time changes (e.g. a Google
+  // Calendar edit) or an rrule occurrence stops applying, the upsert above
+  // can't clean up the *old* placement — its starts_at changed, so it's a
+  // different conflict key, not the same row being replaced. Left alone,
+  // the grid ends up with both the stale and the current occurrence as
+  // separate hard commitments. Sweeps every block's placements in-window
+  // and removes whichever ones no longer match a currently-valid
+  // occurrence. Comparison is by parsed timestamp, not raw string — Postgres
+  // returns `starts_at` as `...+00:00`, which never string-equals JS's own
+  // `...Z` `toISOString()` output (the exact bug class already hit once in
+  // Phase 4's meeting-offer slots).
+  for (const [blockId, validTimes] of validStartsAtByBlock) {
+    const { data: existingForBlock, error: existingError } = await supabase
+      .from("calendula_placements")
+      .select("id, starts_at")
+      .eq("user_id", userId)
+      .eq("source_type", "fixed")
+      .eq("source_id", blockId)
+      .gte("starts_at", from.toISOString())
+      .lt("starts_at", to.toISOString());
+    if (existingError) throw existingError;
+
+    const staleIds = (existingForBlock ?? [])
+      .filter((p) => !validTimes.has(new Date(p.starts_at).getTime()))
+      .map((p) => p.id);
+    if (staleIds.length > 0) {
+      const { error: deleteError } = await supabase.from("calendula_placements").delete().in("id", staleIds);
+      if (deleteError) throw deleteError;
+    }
+  }
+
   return { synced: rows.length };
 }
