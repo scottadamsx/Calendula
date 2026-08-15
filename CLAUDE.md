@@ -704,6 +704,210 @@ The SPEC-GAP-RETRO audit: enumerate every design decision made during implementa
 that isn't in the spec. For each, say what was decided, where in the code, and why it
 wasn't escalated. An empty list is a claim — it will be spot-checked against the diff.
 
+## SPEC-GAP-RETRO audit (as of Phase 7, 2026-08-15)
+
+Every implementation decision made across this build that the spec doesn't
+literally spell out, in build order. Each entry: what was decided, where,
+why it wasn't escalated as a blocking `SPEC-GAP`. Full reasoning for each
+lives in that phase's own section above — this is the index, not a
+replacement. 51 entries; treat that count, not "zero," as the honest
+baseline for a project this size, and spot-check a sample against the diff
+rather than taking the list on faith.
+
+**Escalated and resolved by asking (the only two cases — everything else
+below was resolved in-place):**
+1. Phase 4.6 — real web push has no schema, VAPID setup, or dispatcher
+   anywhere in the spec (a missing subsystem, not an ambiguous detail).
+   Asked directly; deferred by explicit choice, documented in Phase 4.6's
+   section and `qa-status.json`/Overview.
+2. (Structurally the same tier, not re-asked since the pattern was already
+   established) Phase 5's `weatherScore` and Phase 7's Google OAuth are
+   *external-account* blockers flagged the same way `ANTHROPIC_API_KEY`
+   was from Phase 4 onward, without re-asking each time — consistent
+   treatment of one already-answered category, not a new decision each time.
+
+**Forced deviations from the spec's literal text (not ambiguities — the
+literal spec breaks against real conditions):**
+3. Every table and enum type carries a `calendula_` prefix (§5) — the
+   shared Supabase project's `public` schema already had unprefixed
+   `reminders` etc. from a different app; collided outright on first apply.
+4. `meeting_offer_slots` (§5.7) gained a `user_id` column the spec's own
+   table definition omits, contradicting §5's "every table carries
+   user_id" rule — added so the standard owner RLS policy covers it.
+
+**Brand/style overrides (explicitly authorized deviations from the spec
+text, not gaps):**
+5. Radius ramp uses Calendula's own 6/10/12/999 scale (§14.7, D26) instead
+   of generic house style.
+6. Neutral palette (paper/surface/ink/line) cooled from §14.3's warm
+   cream/brown/tan toward stone/slate — live aesthetic feedback, Ray-orange
+   and semantic colors untouched.
+
+**Referenced-but-undefined helpers, filled in with documented
+interpretations (the largest category — the spec calls these by name in
+pseudocode without ever giving a body):**
+7. `sumSlackDelta` (§7.5) — Phase 4, `meetingOffers.ts`.
+8. `effectiveDeadline` per reminder kind (§10.4) — Phase 4.5, `reminders.ts`.
+9. `receptivity`'s literal 2-arg signature vs. its own importance-aware
+   budget modifier — Phase 4.5, resolved by scoring inside the
+   per-(reminder,block) pass rather than the literal abbreviated signature.
+10. Estimate-drift "multiplier moved > 20%" (§11) — no history table
+    exists to diff against, read as drift from the 1.0 baseline instead —
+    Phase 6, `advisorSignals.ts`.
+
+**Schema-vs-spec-text mismatches — a term the pseudocode uses doesn't map
+onto any single row/column the schema actually defines, resolved with a
+documented default rather than escalated:**
+11. Recovery debt's `high_exertion` (only on `fixed_blocks`) vs.
+    `buffer_after_hours` (only on `activity_types`) — Phase 5,
+    `projectedLoad.ts`; fixed_blocks gets a documented 24h default.
+12. "Task with a `person_id`" derived-reminder source (§10.7) — `tasks` has
+    no such column, only `reminders` does. The one case with **no**
+    substitute default — flagged as unimplemented, not faked. Phase 6.5,
+    `generateDerivedReminders.ts`.
+13. The spec's own illustrative title "Book Butter Pot for camping" names a
+    place `activity_holds` has no field for — genericized to the activity
+    type's own name. Phase 6.5, `derivedReminders.ts`.
+
+**Otherwise-unused schema columns, given the only reading that makes them
+do anything:**
+14. `weather_sensitive` (Phase 5) — gates whether the weather term
+    contributes to a window's score at all; the spec's own formula
+    references it nowhere.
+15. `requires_overnight` (Phase 5) — floors a candidate window's length at
+    2 calendar days even when `ceil(min_duration_hours/24)` alone would
+    round to 1.
+
+**Structural gaps — "how does X even reach Y" isn't answered anywhere in
+the spec:**
+16. `fixed_blocks` → `placements` expansion mechanism and timing
+    (ingestion-time via `syncFixedBlockPlacements`, not inside
+    `buildGrid()`) — Phase 1, the first and largest structural gap in the
+    build; wired to a nightly cron + on-create trigger.
+17. `demotion_offered` — promotion's anti-nagging tracking column exists in
+    the spec's schema; demotion's identically-framed "declining is
+    permanent" doesn't have one. The one gap fixed with an actual
+    migration (`20260815000000_task_demotion_offered.sql`) rather than a
+    workaround, since it's a real missing column, not an ambiguity.
+
+**Scope trims — a piece of a phase deliberately left out because nothing
+in that phase's own §16 acceptance criteria exercises it, not because it's
+hard:**
+18. Reminder creation UI supports `moment`/`window`/`latent`; `context`
+    (attach-to-a-placement) is fully supported by the schema and
+    assignment engine, just has no picker UI yet. Phase 4.5.
+19. "Three consecutive dismissals prompt deletion" (§10.8) — advisor-
+    adjacent proactive behavior with no natural home before Phase 6
+    existed; still not built. Phase 4.6.
+20. Habit-shortfall derived reminders have no cascade-on-delete wiring —
+    nothing in this build ever deletes a habit, so there's no trigger
+    point for it yet. Phase 6.5.
+21. Defended holds (Phase 5) and promotion/demotion (Phase 6.5) both use a
+    commit-then-report pattern instead of a true preview-before-commit
+    flow the spec's illustrative dialogue implies — cheaper to build,
+    still satisfies the literal acceptance criteria, which never require
+    asking permission first.
+
+**LLM-gated features, consistently given a deterministic fallback rather
+than skipped (no `ANTHROPIC_API_KEY` configured, throughout):**
+22. `formatOfferMessage` (Phase 4) — meeting-offer message text.
+23. Inbound natural-language offer parsing not built at all — a structured
+    form substitutes. Phase 4.
+24. `formatDigestMessage` (Phase 4.6) — batched reminder digest text.
+25. `formatDriftMessage` / `formatEstimateDriftMessage` / advisor signal
+    prose generally (Phase 6) — the Advisor page states this tradeoff at
+    the top of the page itself, not just in code comments.
+26. `DEFAULT_PROMOTED_TASK_MINUTES = 45` (Phase 6.5) — the spec's own
+    example figure used as a fixed default in place of an LLM-proposed
+    estimate; calibration corrects it over time same as any task.
+27. The daily brief itself and Haiku/Sonnet/Opus model routing (§11) —
+    not built at all, flagged on the Advisor page.
+
+**Simplifications, documented and consciously not escalated because no
+current acceptance criterion depends on the more-correct version:**
+28. Movement-penalty comparison only remembers a task's *first* previous
+    chunk across multiple sessions, not full history. Phase 2.
+29. `min_gap_minutes` spacing/batching is enforced only *within* one
+    `assignReminders()` call, not against a different call's
+    already-scheduled deliveries moments earlier. Phase 4.6.
+30. `assignReminders`'s "already-scheduled" dedup treats any live
+    undelivered delivery as blocking reassignment, without weekly/cyclical
+    awareness for recurring signals like habit shortfall.
+
+**Self-healing over manual steps (the project's own stated principle,
+applied wherever a missing setup step was found):**
+31. `calendula_attention_profile` self-heals from schema defaults on first
+    use rather than requiring a manual insert. Phase 4.5.
+32. The in-app Supabase Connect flow itself (Phase 0) — replaced a
+    non-functional Connect button with paste-four-values-and-go, including
+    running migrations without a terminal.
+
+**Proactive consistency fixes — the same class of gap already found once,
+caught by re-reading before it could bite again, not from a live failure:**
+33. `buildGrid`'s optional-client parameter (Phase 4.5) — mirrors
+    `solve()`/`requestSolve()`'s earlier fix for the identical cron-vs-
+    cookie-session gap, applied before shipping rather than after a bug.
+
+**Nine real bugs found only through live verification against the actual
+connected database, never caught by a passing unit test suite (the
+project's single most-repeated lesson, first learned the hard way early in
+Phase 0 and reconfirmed every phase since):**
+34. Grid phase misalignment — Phase 2, `grid.ts`.
+35. `remaining_minutes` never decremented after a solve — Phase 2, `solve.ts`.
+36. Misleading "unplaceable" message for partially-placed tasks — Phase 2.
+37. `placement_id` silently null on meeting offer slots (timestamptz
+    string-format mismatch) — Phase 4, `meetings.ts`.
+38. Day-spread structurally impossible once one day had enough free time —
+    Phase 4, `meetingOffers.ts`.
+39. `min_gap_minutes` (45m) wider than the batch window (20m), making
+    batching dead on arrival under default settings — Phase 4.6.
+40. Phase 4.5's "assign immediately on creation" convenience made batching
+    structurally impossible in practice (each reminder always alone in its
+    own assignment pass) — Phase 4.6, fixed by removing that convenience.
+41. `syncFixedBlockPlacements`'s upsert-by-`starts_at` key leaves a stale
+    placement behind whenever a fixed block's own time changes — found
+    live in Phase 7 while testing Google Calendar sync, but the bug lived
+    in Phase 1 code untouched until something (a Google edit) finally
+    exercised the "a block's time changes" path for the first time.
+
+**Cross-cutting additions with no spec basis at all — pure process
+tooling or engineering necessity, not product behavior:**
+42. QA tracker (`qa-status.json`, `PhaseRow.tsx`) — Phase 0.
+43. Brand mark bloom entrance animation, hero-only — Phase 0.
+44. Ten-phase build cadence itself (0→1→2→3→4→4.5→4.6→5→6→6.5→7) — Scotty's
+    own explicit process request, since folded into DEVRULES.
+45. Performance fix parallelizing `solve()`'s DB reads/writes via
+    `Promise.all` (Phase 3) — cut real solve latency ~8x; a timing fix, not
+    a correctness one, but changed observable behavior (how fast a solve
+    completes) beyond what any acceptance criterion specified.
+
+**Minor interface additions beyond a spec function's literal signature,
+each because the described behavior is meaningless without the extra
+field:**
+46. `SolveOptions.trigger` (Phase 2) — `schedule_runs`' own `trigger`
+    column needs a real value from somewhere.
+47. `FindMeetingSlotsOptions.location` (Phase 4) — `travelFeasible`'s
+    scoring term needs a location to compare against.
+48. `solve()`/`requestSolve()`/`buildGrid()`'s optional injectable
+    `client` parameter (Phase 4, extended Phase 4.5) — cron contexts have
+    no cookie session to default to.
+
+**Partial-phase delivery, split cleanly along what does and doesn't need
+external credentials this project has no access to:**
+49. Phase 6 — signals fully built, LLM prose/model routing/daily brief not.
+50. Phase 7 — reconciliation engine fully built and live-tested against
+    real data; OAuth token exchange and the actual Calendar API fetch not
+    attempted at all, since writing integration code with no credentials
+    to verify it against would break "verify before done" for the first
+    time in this project.
+
+**One outcome-to-status mapping gap in the schema's own enum, resolved
+in-place:**
+51. `reminders.status` has no `'deferred'` value in its enum (only
+    pending/delivered/acknowledged/done/dismissed/promoted) — a deferred
+    outcome maps to `'pending'` with `defer_count` incremented instead.
+    Phase 4.6, `recordReminderOutcome`.
+
 ## Cadence
 
 Commit at each build-order phase boundary (§16). `git init` already happened —
