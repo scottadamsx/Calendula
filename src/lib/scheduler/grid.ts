@@ -4,6 +4,7 @@ import type { EnergyLabel } from "./types";
 /** Pure grid construction (spec §6). No DB access here — see buildGrid.ts. */
 
 export type BlockState = "unavailable" | "free" | "soft" | "hard" | "tentative";
+export type SourceType = "fixed" | "task" | "habit" | "activity_hold" | "meeting_hold" | "meeting";
 
 export interface Block {
   start: Date;
@@ -12,6 +13,7 @@ export interface Block {
   quality: number;
   labels: EnergyLabel[];
   sourceId?: string;
+  sourceType?: SourceType;
   title?: string;
   location?: string;
   frozen: boolean;
@@ -19,6 +21,7 @@ export interface Block {
 
 export interface PlacementInput {
   sourceId: string;
+  sourceType: SourceType;
   title: string;
   startsAt: Date;
   endsAt: Date;
@@ -135,6 +138,7 @@ export function computeGrid(input: GridInput): Block[] {
 
       block.state = effectiveHardness;
       block.sourceId = placement.sourceId;
+      block.sourceType = placement.sourceType;
       block.title = placement.title;
       if (placement.location) block.location = placement.location;
     });
@@ -188,6 +192,7 @@ export function computeGrid(input: GridInput): Block[] {
 
 export interface MergedPlacement {
   sourceId: string;
+  sourceType?: SourceType;
   title?: string;
   start: Date;
   end: Date;
@@ -208,6 +213,7 @@ export function mergeBySource(blocks: Block[]): MergedPlacement[] {
     } else {
       merged.push({
         sourceId: block.sourceId,
+        sourceType: block.sourceType,
         title: block.title,
         start: block.start,
         end: block.end,

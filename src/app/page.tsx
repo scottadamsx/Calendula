@@ -39,17 +39,24 @@ const BUILT_PHASES = [
       "To test a conflict: add a second task with the same tight deadline and a long duration, longer than the free time actually left before that deadline. Expected: the message says there wasn't room for it, and on refresh that task has no orange block at all — it should never overlap the other one.",
     ],
   },
+  {
+    id: "phase-3",
+    name: "Phase 3 — Habits",
+    detail: "Schedules recurring things like the gym or practice, spaced out so they don't all land on the same day.",
+    howToTest: [
+      "Go to Week.",
+      "Use \"Add a habit\" — e.g. Gym, 60 minutes, 3 times/week, 24 hours minimum spacing.",
+      "Wait a few seconds, then refresh.",
+      "Expected: green blocks appear on different days, never less than 24 hours apart — never two days in a row.",
+      "If the week genuinely has no room left, the message says how many sessions couldn't fit instead of silently dropping them.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 3 — Habits",
-    status: "next" as const,
-    detail: "Schedules recurring things like the gym or practice, spaced out so they don't all land on the same day.",
-  },
-  {
     name: "Phase 4 — \"When are you free?\"",
-    status: "later" as const,
+    status: "next" as const,
     detail: "Suggests real meeting times when someone asks, without double-booking you or backfilling the slot overnight.",
   },
   {
@@ -90,7 +97,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Three pieces are built: the plumbing, a week view of your fixed commitments, and auto-scheduling for your to-do list. Habits, meetings, and reminders are still ahead. Click a phase below to try it yourself and say whether it actually works."
+        lead="Four pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, and habits. Meetings and reminders are still ahead. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { computeGrid, type Block } from "./grid";
+import { computeGrid, type Block, type SourceType } from "./grid";
 import type { EnergyLabel } from "./types";
 
 /**
@@ -23,7 +23,7 @@ export async function buildGrid(userId: string, from: Date, to: Date): Promise<B
 
   const { data: placements, error: placementsError } = await supabase
     .from("calendula_placements")
-    .select("source_id, title, starts_at, ends_at, hardness, pinned, location")
+    .select("source_id, source_type, title, starts_at, ends_at, hardness, pinned, location")
     .eq("user_id", userId)
     .lt("starts_at", to.toISOString())
     .gt("ends_at", from.toISOString());
@@ -67,6 +67,7 @@ export async function buildGrid(userId: string, from: Date, to: Date): Promise<B
     freezeWindowHours: profile.freeze_window_hours,
     placements: (placements ?? []).map((p) => ({
       sourceId: p.source_id,
+      sourceType: p.source_type as SourceType,
       title: p.title,
       startsAt: new Date(p.starts_at),
       endsAt: new Date(p.ends_at),

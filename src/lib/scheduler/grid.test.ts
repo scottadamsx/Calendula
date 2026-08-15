@@ -122,6 +122,7 @@ describe("computeGrid", () => {
         placements: [
           {
             sourceId: "a",
+            sourceType: "task",
             title: "A",
             startsAt: local(2026, 6, 1, 9, 0),
             endsAt: local(2026, 6, 1, 10, 0),
@@ -132,6 +133,7 @@ describe("computeGrid", () => {
           },
           {
             sourceId: "b",
+            sourceType: "task",
             title: "B",
             startsAt: local(2026, 6, 1, 9, 30),
             endsAt: local(2026, 6, 1, 10, 30),
@@ -161,6 +163,7 @@ describe("computeGrid", () => {
       placements: [
         {
           sourceId: "pinned-task",
+          sourceType: "task",
           title: "Pinned task",
           startsAt: from,
           endsAt: to,
@@ -192,6 +195,7 @@ describe("computeGrid", () => {
       placements: [
         {
           sourceId: "meeting",
+          sourceType: "meeting",
           title: "Meeting",
           startsAt: local(2026, 6, 1, 10, 0),
           endsAt: local(2026, 6, 1, 11, 0),

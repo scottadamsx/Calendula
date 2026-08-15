@@ -7,8 +7,29 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { AddTaskForm } from "@/components/tasks/AddTaskForm";
+import { AddHabitForm } from "@/components/tasks/AddHabitForm";
+import type { MergedPlacement } from "@/lib/scheduler/grid";
 
 const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Spec §14.4 state encoding: solid dark = hard, Ray edge = task, Leaf edge = habit. */
+function placementStyle(p: MergedPlacement) {
+  if (p.state === "hard") {
+    return { container: "rounded-sm bg-ink text-paper px-2 py-1", title: "text-paper", meta: "text-paper/80" };
+  }
+  if (p.sourceType === "habit") {
+    return {
+      container: "border-l-2 border-accent-habit bg-accent-habit/10 pl-2 py-1 rounded-r-sm",
+      title: "text-ink",
+      meta: "text-ink-soft",
+    };
+  }
+  return {
+    container: "border-l-2 border-brand-600 bg-brand-50 pl-2 py-1 rounded-r-sm",
+    title: "text-ink",
+    meta: "text-ink-soft",
+  };
+}
 
 function NotConnected({ children }: { children: React.ReactNode }) {
   return (
@@ -103,7 +124,7 @@ export default async function WeekPage({
       <PageHeader
         eyebrow="Week"
         title={`Week of ${weekStart.toFormat("LLL d")}`}
-        lead="Solid dark blocks are fixed commitments. Ray-colored blocks are tasks the solver auto-scheduled — add one below."
+        lead="Solid dark blocks are fixed commitments. Ray-colored blocks are auto-scheduled tasks; green blocks are habit sessions — add either below."
         action={
           <div className="flex gap-2">
             <Link
@@ -122,8 +143,9 @@ export default async function WeekPage({
         }
       />
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-col gap-4">
         <AddTaskForm />
+        <AddHabitForm />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
@@ -140,27 +162,19 @@ export default async function WeekPage({
               <p className="text-xs text-ink-faint">Nothing scheduled.</p>
             ) : (
               <ul className="flex flex-col gap-2">
-                {dayPlacements.map((p) => (
-                  <li
-                    key={`${p.sourceId}-${p.start.toISOString()}`}
-                    className={
-                      p.state === "hard"
-                        ? "rounded-sm bg-ink text-paper px-2 py-1"
-                        : "border-l-2 border-brand-600 bg-brand-50 pl-2 py-1 rounded-r-sm"
-                    }
-                  >
-                    <div className={`text-xs font-semibold ${p.state === "hard" ? "text-paper" : "text-ink"}`}>
-                      {p.title}
-                    </div>
-                    <div
-                      className={`font-data text-[11px] ${p.state === "hard" ? "text-paper/80" : "text-ink-soft"}`}
-                    >
+                {dayPlacements.map((p) => {
+                  const style = placementStyle(p);
+                  return (
+                  <li key={`${p.sourceId}-${p.start.toISOString()}`} className={style.container}>
+                    <div className={`text-xs font-semibold ${style.title}`}>{p.title}</div>
+                    <div className={`font-data text-[11px] ${style.meta}`}>
                       {DateTime.fromJSDate(p.start, { zone: profile.timezone }).toFormat("HH:mm")}–
                       {DateTime.fromJSDate(p.end, { zone: profile.timezone }).toFormat("HH:mm")}
                     </div>
                     {p.location && <Badge tone="neutral">{p.location}</Badge>}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </Panel>

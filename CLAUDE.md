@@ -128,8 +128,41 @@ by any unit test), both fixed:
    re-considered as a candidate — without it, nothing would ever leave the active
    pool.
 
-`habitShortfall` and `derivedReminders` on `SolveResult` are always empty — honest
-about scope, not a placeholder. Habits are Phase 3; derived reminders are Phase 6.5.
+`derivedReminders` on `SolveResult` is always empty — honest about scope, not a
+placeholder. Derived reminders are Phase 6.5.
+
+## Phase 3 — habits
+
+`placeHabits.ts` (pure, spec §7.4), run inside `solve.ts` as a second pass over the
+same `blocks` array the task solver already placed into — task placements are
+already marked `soft` by the time the habit pass runs, so the two can't collide.
+Unit-tested directly against the spec's §16 acceptance criteria (3×/week at 24h
+spacing never lands on consecutive days; a genuinely full week reports a shortfall
+instead of dropping sessions silently), plus time-of-day window and spacing against
+sessions already frozen/preserved from a prior run.
+
+Extension beyond the pseudocode's literal one-week framing: the horizon is
+14 days by default (~2 calendar weeks), and `target_sessions_per_week` is a
+per-week target, so the pass iterates every calendar week the horizon touches,
+re-deriving `needed` each time, rather than treating the whole horizon as one
+week. Spacing is still checked across week boundaries (a Friday/Monday pair can
+still violate 24h spacing).
+
+Every `solve()` now covers both task and habit soft placements for the delete-
+then-rebuild step (D2) — Phase 2's version was scoped to `task` only because the
+habit pass didn't exist yet to safely regenerate what it deleted.
+
+**Real performance issue found live, fixed same day**: a single habit add took
+~10s end to end. Not an algorithm problem — `solve()` was issuing 5+ independent
+Supabase reads and several writes *sequentially*, each a real network round-trip
+to a remote pooler. Parallelized the independent reads with one `Promise.all`,
+combined the two placement inserts (task + habit) into one, and ran the
+`schedule_runs` audit insert concurrently with the per-task `remaining_minutes`
+updates instead of a sequential loop. Cut server-side solve time from ~8.6s to
+~1.1s (the fixed 2s debounce is separate, by design). Same lesson as before:
+this was invisible to unit tests and only surfaced from a real click against a
+real remote database — check request timing, not just correctness, when testing
+live.
 
 ## Cross-cutting additions (not tied to a spec phase)
 
