@@ -22,5 +22,6 @@
     "bugs": []
   },
   "phase-3": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-4": { "verified": false, "verifiedAt": null, "bugs": [] }
+  "phase-4": { "verified": false, "verifiedAt": null, "bugs": [] },
+  "phase-4-5": { "verified": false, "verifiedAt": null, "bugs": [] }
 }

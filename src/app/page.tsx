@@ -63,13 +63,25 @@ const BUILT_PHASES = [
       "Expected: that slot turns into a real meeting on Week (dark block), and the other offered slots disappear instead of staying held.",
     ],
   },
+  {
+    id: "phase-4-5",
+    name: "Phase 4.5 — Smart reminders",
+    detail: "Nudges you about things at the right moment — never during sleep, never on top of something already pinned down, never after it's already too late.",
+    howToTest: [
+      "Go to Reminders.",
+      "Use \"Add a reminder\" — kind \"Moment\", a title, and a due time about an hour and a half from now.",
+      "Expected: within a few seconds it shows a \"surfaces\" badge with a time before your due time — never after it.",
+      "Add a second one with kind \"Someday\" (no due time).",
+      "Expected: it shows a \"someday\" badge instead — it never gets a scheduled surface time, and never uses up a budget slot.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 4.5 — Smart reminders",
+    name: "Phase 4.6 — Batching and push",
     status: "next" as const,
-    detail: "Nudges you about things at the right moment instead of bombarding you with notifications.",
+    detail: "Groups reminders that land close together into one nudge instead of several, and adds real push delivery.",
   },
   {
     name: "Phase 5 — Planning ahead",
@@ -104,7 +116,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Five pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, and finding meeting times. Reminders and beyond are still ahead. Click a phase below to try it yourself and say whether it actually works."
+        lead="Six pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, and reminders. Batching, push, and beyond are still ahead. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

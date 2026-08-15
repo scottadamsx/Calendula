@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeGrid, type Block, type SourceType } from "./grid";
 import { solveCore, type TaskInput } from "./solveCore";
 import { placeHabits, type HabitInput, type HabitSession } from "./placeHabits";
+import { assignReminders } from "./assignReminders";
 import type { EnergyLabel, SolveOptions, SolveResult } from "./types";
 
 /**
@@ -309,6 +310,12 @@ export async function solve(
     if (placementsResult.error) throw placementsResult.error;
     if (auditResult.error) throw auditResult.error;
     for (const r of updateResults) if (r.error) throw r.error;
+
+    // spec §10.4: "runs on every solve and on a fifteen-minute cron" — the
+    // grid reminders assign against just changed, so re-running it here
+    // keeps deliveries current instead of waiting up to 15 minutes. Never
+    // runs for a dryRun, which must have no persisted side effects.
+    await assignReminders(userId, supabase);
   }
 
   return {

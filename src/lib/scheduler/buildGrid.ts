@@ -1,15 +1,19 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { computeGrid, type Block, type SourceType } from "./grid";
 import type { EnergyLabel } from "./types";
 
 /**
- * DB-reading wrapper matching the spec §6 signature exactly. Uses the
- * cookie-bound server client (not the service-role one) so RLS scopes every
- * read to the caller's own `auth.uid()` — this runs inside a request made on
- * behalf of a logged-in browser session, unlike the fixed-block sync cron.
+ * DB-reading wrapper matching the spec §6 signature exactly. Defaults to the
+ * cookie-bound server client so RLS scopes every read to the caller's own
+ * `auth.uid()` — the common case, a request made on behalf of a logged-in
+ * browser session. Same optional-client pattern as solve()/requestSolve():
+ * a caller with no browser session (a cron, or assignReminders() running
+ * inside a cron-triggered solve()) must pass a service-role client
+ * explicitly instead of silently hitting an unauthenticated cookie client.
  */
-export async function buildGrid(userId: string, from: Date, to: Date): Promise<Block[]> {
-  const supabase = await createClient();
+export async function buildGrid(userId: string, from: Date, to: Date, client?: SupabaseClient): Promise<Block[]> {
+  const supabase = client ?? (await createClient());
 
   const { data: profile, error: profileError } = await supabase
     .from("calendula_scheduling_profile")

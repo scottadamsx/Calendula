@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/expire-meeting-offers",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/assign-reminders",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

@@ -230,6 +230,98 @@ Both were invisible to unit tests that exercised each piece in isolation —
 only a live offer against real, mostly-empty calendar data (one day with
 tons of free time) reproduced them.
 
+## Phase 4.5 — reminders core
+
+`reminders.ts` (pure — `receptivity`, `urgency`, `effectiveDeadline`,
+`assignRemindersCore`, spec §10.2–§10.4) + `assignReminders.ts` (DB wrapper:
+fetches the attention profile and pending reminders, builds the 48h grid via
+`buildGrid`, writes `calendula_reminder_deliveries`). Runs on every non-dryRun
+`solve()` (wired at the end of `solve.ts`) and on a new 15-minute cron
+(`/api/cron/assign-reminders`) — the third of the spec's three named crons
+(§13), matching the other two's `activeUsers()` iteration shape. `src/app/
+actions/reminders.ts` covers creation for `moment`/`window`/`latent` kinds.
+
+**Three underspecified pieces, resolved and documented directly in
+`reminders.ts`** (same treatment as `sumSlackDelta` in Phase 4 — filling in
+an already-referenced helper, not escalated as a SPEC-GAP):
+
+1. `effectiveDeadline(r)` — referenced by §10.4's assignment loop, never
+   defined. `moment` → `due_at` itself (matches the phase's own acceptance
+   criterion verbatim: "no reminder is ever scheduled after its due_at").
+   `window` → `window_end`. `context` → the trigger placement's start, since
+   §10.3 only gives a context reminder nonzero urgency up to that instant.
+   `latent` → null, unreachable since latent is filtered out of candidates
+   before this is ever called.
+2. **`receptivity`'s signature vs. its own modifier list contradict each
+   other.** The pseudocode signature is `receptivity(block, profile)`, but
+   one of its modifiers — "-all if today's delivered count >= budget, unless
+   importance = 5" — needs the reminder's importance, which a 2-arg call
+   can't supply. Taken literally, a maxed-out day would zero receptivity for
+   *every* block including importance-5 ones, making the assignment loop's
+   own explicit importance-5 override (§10.4) dead code — clearly not the
+   intent given importance-5 overrides exist specifically so critical
+   reminders aren't locked out. Resolved by scoring receptivity inside the
+   per-(reminder, block) pass, where the current reminder's importance is
+   available despite the abbreviated signature.
+3. The "+0.15 block is a travel buffer" receptivity modifier is
+   **structurally unreachable** under the existing grid model: `computeGrid`
+   (Phase 1) already folds travel-buffer padding into `state: "unavailable"`,
+   which this function's own hard floor returns 0 for before any modifier
+   would apply. Not reproduced — fixing it means revisiting Phase 1's block
+   semantics, out of scope here.
+
+**Self-healing `calendula_attention_profile`, not a manual step.** Like
+`calendula_scheduling_profile`, no signup flow creates this row yet (a
+pre-existing gap, not introduced here). Per "anything a user needs to do
+manually is bad programming," `assignReminders` inserts a default row (the
+schema's own column defaults, spec §5.1) the first time it's missing instead
+of requiring a manual SQL insert — verified live: the real connected user had
+no `attention_profile` row at all, and the first reminder created still
+scheduled correctly, self-healing the row in the process.
+
+**`buildGrid` gained the same optional-client parameter as `solve()`.**
+`assignReminders` runs from two contexts: inside a solve (cookie-bound or
+service-role, whichever `solve()` was given) and from the 15-minute cron
+(service-role only, no browser session). `buildGrid` previously always
+constructed its own cookie-bound client internally, which would have
+silently seen an unauthenticated session — and returned zero rows via
+RLS, not an error — the moment a cron-triggered `solve()` reached
+`assignReminders`. Fixed before it ever shipped, not a live bug this time:
+caught by re-reading `buildGrid.ts` while wiring `assignReminders` in, since
+it's the exact class of gap already fixed once for `solve()`/`requestSolve()`
+in Phase 4. `findMeetingSlots.ts` has the same latent gap (its own internal
+`createClient()` call) but is never reached from a cron path today, so it
+was left alone rather than changed speculatively.
+
+Channel is hardcoded to `'inline'` on every delivery this phase writes —
+`push` doesn't exist yet (§10.8, Phase 4.6) and neither does the daily brief
+(`brief`, Phase 6). The budget/receptivity/urgency math still runs in full
+regardless of channel; channel routing is a separate, later concern. The
+`/reminders` page is this phase's only delivery surface — it lists pending
+reminders and each one's next scheduled surface time, read-only. Outcome
+capture (acknowledge/defer/done/dismiss) is explicitly Phase 4.6's line item
+("batching and push... outcome capture"), not built here.
+
+**UI scope trim, not a spec gap:** the creation form supports `moment`,
+`window`, and `latent` kinds. `context` (attached to a placement, e.g.
+"before the next hike, message Dee") is fully supported by the schema and
+`assignReminders`' resolution of `trigger_placement_id` → its placement's
+start time, just has no creation form yet — picking "which placement" needs
+a placement browser this phase doesn't build. §16's Phase 4.5 acceptance
+criteria only exercise moment-kind budget/deadline behavior, so this wasn't
+escalated.
+
+Verified live against the real connected project: created a moment reminder
+due in ~90 minutes with the daily budget wide open — it was assigned a
+delivery in the very next free, non-boundary block scored 0.85 receptivity,
+scheduled well before its `due_at`. A `latent` reminder created alongside it
+got no delivery at all, confirmed against the "never budgeted" rule. Re-ran
+the cron endpoint and re-triggered a solve via task creation immediately
+after — `assignedCount: 0` both times, and the DB still showed exactly one
+delivery row for the moment reminder, confirming the "skip reminders with an
+already-scheduled, undelivered delivery" rule prevents the 15-minute cron
+(and every solve) from piling up duplicate rows for the same reminder.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
