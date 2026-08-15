@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requestSolve } from "@/lib/scheduler/dispatch";
 import { solve } from "@/lib/scheduler/solve";
 import { findFutureWindows } from "@/lib/scheduler/findFutureWindows";
+import { cascadeDismissDerivedReminder } from "@/lib/scheduler/generateDerivedReminders";
 import type { ScoredWindow } from "@/lib/scheduler/futureWindows";
 
 export interface CreateActivityTypeResult {
@@ -218,9 +219,14 @@ export async function releaseActivityHold(holdId: string): Promise<ReleaseHoldRe
     .eq("user_id", user.id);
   if (holdError) return { ok: false, message: holdError.message };
 
+  // spec §10.7: "when the parent record is completed, cancelled, or
+  // deleted, the derived reminder cascades to dismissed."
+  await cascadeDismissDerivedReminder(user.id, "activity_hold", holdId, supabase);
+
   await requestSolve(user.id, "activity_hold_released", supabase);
   revalidatePath("/planning");
   revalidatePath("/week");
+  revalidatePath("/reminders");
 
   return { ok: true, message: "Released — coursework can move back into that window." };
 }

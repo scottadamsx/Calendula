@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { cascadeDismissDerivedReminder } from "@/lib/scheduler/generateDerivedReminders";
 
 export interface CreatePersonResult {
   ok: boolean;
@@ -53,6 +54,11 @@ export async function logInteraction(personId: string): Promise<LogInteractionRe
     .eq("user_id", user.id);
   if (error) return { ok: false, message: error.message };
 
+  // spec §10.7: contact happening resolves the drift a person_cadence
+  // derived reminder exists to flag.
+  await cascadeDismissDerivedReminder(user.id, "person_cadence", personId, supabase);
+
   revalidatePath("/advisor");
+  revalidatePath("/reminders");
   return { ok: true, message: "Logged." };
 }

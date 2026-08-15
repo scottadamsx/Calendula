@@ -8,6 +8,7 @@ import {
   type OverloadCandidate,
   type RelationshipDrift,
 } from "./advisorSignals";
+import { isPromotionCandidate, isDemotionCandidate, type PromotionCandidate, type DemotionCandidate } from "./promotionDemotion";
 
 export interface AdvisorSignals {
   overload: OverloadCandidate[];
@@ -15,7 +16,8 @@ export interface AdvisorSignals {
   habitShortfall: { habitId: string; title: string; missing: number }[];
   relationshipDrift: RelationshipDrift[];
   estimateDrift: { categoryId: string; categoryName: string; multiplier: number }[];
-  promotionCandidates: { reminderId: string; title: string; deferCount: number }[];
+  promotionCandidates: PromotionCandidate[];
+  demotionCandidates: DemotionCandidate[];
   overdueUnassigned: { reminderId: string; title: string; dueAt: Date }[];
 }
 
@@ -129,8 +131,8 @@ export async function getAdvisorSignals(userId: string, client?: SupabaseClient)
     }));
   }
 
-  // Promotion candidates (§10.6 trigger, surfaced here as a signal only —
-  // the actual proposal/accept flow is Phase 6.5's "promotion loop").
+  // Promotion candidates (spec §10.6): defer_count over threshold, OR
+  // pending/non-latent for more than 7 days — not offered before.
   const { data: attentionProfile } = await supabase
     .from("calendula_attention_profile")
     .select("promote_after_defers")
@@ -138,19 +140,38 @@ export async function getAdvisorSignals(userId: string, client?: SupabaseClient)
     .maybeSingle();
   const promoteAfterDefers = attentionProfile?.promote_after_defers ?? 3;
 
-  const { data: promotionCandidateRows, error: promotionError } = await supabase
+  const { data: promotionRows, error: promotionError } = await supabase
     .from("calendula_reminders")
-    .select("id, title, defer_count")
+    .select("id, title, kind, status, defer_count, promotion_offered, created_at")
     .eq("user_id", userId)
     .eq("status", "pending")
-    .eq("promotion_offered", false)
-    .gte("defer_count", promoteAfterDefers);
+    .eq("promotion_offered", false);
   if (promotionError) throw promotionError;
-  const promotionCandidates = (promotionCandidateRows ?? []).map((r) => ({
-    reminderId: r.id,
-    title: r.title,
-    deferCount: r.defer_count,
-  }));
+  const promotionCandidates: PromotionCandidate[] = (promotionRows ?? [])
+    .filter((r) =>
+      isPromotionCandidate(
+        { status: r.status, kind: r.kind, deferCount: r.defer_count, createdAt: new Date(r.created_at), promotionOffered: r.promotion_offered },
+        now,
+        promoteAfterDefers,
+      ),
+    )
+    .map((r) => ({ reminderId: r.id, title: r.title, deferCount: r.defer_count, createdAt: new Date(r.created_at) }));
+
+  // Demotion candidates (spec §10.6): placed and skipped 3+ times, small
+  // enough that it was never block-shaped work.
+  const { data: demotionRows, error: demotionError } = await supabase
+    .from("calendula_tasks")
+    .select("id, title, status, skip_count, estimated_minutes, demotion_offered")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .eq("demotion_offered", false)
+    .gte("skip_count", 3);
+  if (demotionError) throw demotionError;
+  const demotionCandidates: DemotionCandidate[] = (demotionRows ?? [])
+    .filter((t) =>
+      isDemotionCandidate({ status: t.status, skipCount: t.skip_count, estimatedMinutes: t.estimated_minutes, demotionOffered: t.demotion_offered }),
+    )
+    .map((t) => ({ taskId: t.id, title: t.title, skipCount: t.skip_count, estimatedMinutes: t.estimated_minutes }));
 
   // Overdue, never delivered — assignReminders() never schedules past
   // due_at ("never deliver late," Phase 4.5), so these fell through
@@ -177,6 +198,7 @@ export async function getAdvisorSignals(userId: string, client?: SupabaseClient)
     relationshipDrift,
     estimateDrift,
     promotionCandidates,
+    demotionCandidates,
     overdueUnassigned,
   };
 }

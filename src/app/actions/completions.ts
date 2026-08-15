@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requestSolve } from "@/lib/scheduler/dispatch";
+import { cascadeDismissDerivedReminder } from "@/lib/scheduler/generateDerivedReminders";
 
 export interface LogCompletionResult {
   ok: boolean;
@@ -73,10 +74,16 @@ export async function logCompletion(
       if (updateError) return { ok: false, message: updateError.message };
     }
     await requestSolve(user.id, "completion_skipped", supabase);
+  } else if (completed && placement.source_type === "task") {
+    // spec §10.7: a task-at-risk derived reminder is about urgency that a
+    // completed session has, at minimum, made progress against — cascade
+    // it the same as any other resolved parent record.
+    await cascadeDismissDerivedReminder(user.id, "task_at_risk", placement.source_id, supabase);
   }
 
   revalidatePath("/checkin");
   revalidatePath("/week");
+  revalidatePath("/reminders");
 
   return {
     ok: true,

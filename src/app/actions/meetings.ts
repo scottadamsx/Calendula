@@ -6,6 +6,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { requestSolve } from "@/lib/scheduler/dispatch";
 import { findMeetingSlots } from "@/lib/scheduler/findMeetingSlots";
 import { formatOfferMessage } from "@/lib/scheduler/meetingOffers";
+import { cascadeDismissDerivedReminder } from "@/lib/scheduler/generateDerivedReminders";
 import type { MeetingType } from "@/lib/scheduler/meetingOffers";
 
 export interface CreateOfferResult {
@@ -174,9 +175,14 @@ export async function confirmMeetingOffer(offerId: string, slotId: string): Prom
       .in("id", offer.person_ids);
   }
 
+  // spec §10.7: resolving the parent record (confirmed, same as expired)
+  // cascades its derived "follow up" reminder to dismissed.
+  await cascadeDismissDerivedReminder(user.id, "meeting_offer", offerId, supabase);
+
   await requestSolve(user.id, "meeting_confirmed");
   revalidatePath("/meetings");
   revalidatePath("/week");
+  revalidatePath("/reminders");
 
   return { ok: true, message: "Confirmed — the other slots are released." };
 }
@@ -205,6 +211,10 @@ export async function expireMeetingOffers(): Promise<{ expired: number }> {
     await supabase.from("calendula_placements").delete().in("id", placementIds);
   }
   await supabase.from("calendula_meeting_offers").update({ status: "expired" }).in("id", offerIds);
+
+  for (const offer of expiredOffers) {
+    await cascadeDismissDerivedReminder(offer.user_id, "meeting_offer", offer.id, supabase);
+  }
 
   const affectedUsers = [...new Set(expiredOffers.map((o) => o.user_id))];
   for (const userId of affectedUsers) {

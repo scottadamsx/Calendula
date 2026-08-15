@@ -6,12 +6,15 @@ import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { AddPersonForm } from "@/components/advisor/AddPersonForm";
 import { LogInteractionButton } from "@/components/advisor/LogInteractionButton";
+import { PromotionProposalButtons } from "@/components/advisor/PromotionProposalButtons";
+import { DemotionProposalButtons } from "@/components/advisor/DemotionProposalButtons";
 import { getAdvisorSignals } from "@/lib/scheduler/getAdvisorSignals";
 import {
   formatOverloadMessage,
   formatDriftMessage,
   formatEstimateDriftMessage,
 } from "@/lib/scheduler/advisorSignals";
+import { formatPromotionProposal, formatDemotionProposal } from "@/lib/scheduler/promotionDemotion";
 
 function NotConnected({ children }: { children: React.ReactNode }) {
   return (
@@ -84,6 +87,7 @@ export default async function AdvisorPage() {
     signals.estimateDrift.length +
     signals.habitShortfall.length +
     signals.promotionCandidates.length +
+    signals.demotionCandidates.length +
     signals.overdueUnassigned.length;
 
   return (
@@ -130,12 +134,6 @@ export default async function AdvisorPage() {
               <SignalRow key={e.categoryId}>{formatEstimateDriftMessage(e.categoryName, e.multiplier)}</SignalRow>
             ))}
 
-            {signals.promotionCandidates.map((p) => (
-              <SignalRow key={p.reminderId} badge="promotion candidate" tone="info">
-                &ldquo;{p.title}&rdquo; has come up {p.deferCount} times — probably not a quick thing.
-              </SignalRow>
-            ))}
-
             {signals.overdueUnassigned.map((r) => (
               <SignalRow key={r.reminderId} badge="overdue" tone="danger">
                 &ldquo;{r.title}&rdquo; was due {DateTime.fromJSDate(r.dueAt, { zone: timezone }).toFormat("ccc LLL d")} and never surfaced.
@@ -143,6 +141,29 @@ export default async function AdvisorPage() {
             ))}
           </ul>
         </Panel>
+
+        {(signals.promotionCandidates.length > 0 || signals.demotionCandidates.length > 0) && (
+          <Panel>
+            <h2 className="text-base font-semibold mb-1">Proposals</h2>
+            <p className="text-xs text-ink-soft mb-3">
+              Draft-only — nothing changes until you accept. Declining is permanent, so this won&rsquo;t ask about the same one twice.
+            </p>
+            <ul className="flex flex-col gap-3">
+              {signals.promotionCandidates.map((p) => (
+                <li key={p.reminderId} className="flex items-center justify-between gap-3 pb-3 border-b border-line last:border-0 last:pb-0">
+                  <span className="text-sm text-ink flex-1">{formatPromotionProposal(p)}</span>
+                  <PromotionProposalButtons reminderId={p.reminderId} />
+                </li>
+              ))}
+              {signals.demotionCandidates.map((d) => (
+                <li key={d.taskId} className="flex items-center justify-between gap-3 pb-3 border-b border-line last:border-0 last:pb-0">
+                  <span className="text-sm text-ink flex-1">{formatDemotionProposal(d)}</span>
+                  <DemotionProposalButtons taskId={d.taskId} />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
 
         <Panel>
           <h2 className="text-base font-semibold mb-3">People</h2>

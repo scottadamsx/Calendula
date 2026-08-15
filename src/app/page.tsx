@@ -111,23 +111,30 @@ const BUILT_PHASES = [
       "Click \"We talked today\" — expected: that line disappears.",
     ],
   },
+  {
+    id: "phase-6-5",
+    name: "Phase 6.5 — Promotion loop and derived reminders",
+    detail: "Notices when a recurring reminder is really a task in disguise, catches small tasks that keep getting skipped, and generates reminders automatically from other layers (like an upcoming camping trip or someone falling out of touch).",
+    howToTest: [
+      "Go to Reminders, add one, and defer it three times using the \"Later\" button (you may need to add any task on Week between each defer to trigger reassignment).",
+      "Go to Advisor — expected: a \"Proposals\" section appears with the exact reminder title and \"Schedule 45 minutes for it?\"",
+      "Click \"Schedule it\" — expected: it's now a real scheduled task instead of a reminder.",
+      "Go to Planning, hold a window for any activity type, then release it.",
+      "Expected: a \"Book [activity]\" reminder briefly exists (visible on Reminders if you check right after holding), and disappears once released.",
+    ],
+  },
 ];
 
 const UPCOMING_PHASES = [
   {
-    name: "Phase 6.5 — Promotion loop and derived reminders",
-    status: "next" as const,
-    detail: "Notices when a recurring reminder is really a task in disguise, and generates reminders automatically from other layers (like an upcoming camping trip or someone falling out of touch).",
-  },
-  {
     name: "Phase 7 — Google Calendar import",
-    status: "later" as const,
+    status: "next" as const,
     detail: "Pulls your existing Google Calendar events in automatically. One-way only — never edits Google Calendar itself.",
   },
 ];
 
 const STATUS_LABEL: Record<
-  (typeof UPCOMING_PHASES)[number]["status"],
+  "next" | "later",
   { label: string; tone: "info" | "neutral" }
 > = {
   next: { label: "Next", tone: "info" },
@@ -142,7 +149,7 @@ export default async function OverviewPage() {
       <PageHeader
         eyebrow="Overview"
         title="Calendula is under construction"
-        lead="Nine pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, defending time for future plans, and reconciliation. Promotion loops and beyond are still ahead — real push notifications and AI-polished prose are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
+        lead="Ten pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, defending time for future plans, reconciliation, and the promotion/demotion loop with derived reminders. Google Calendar import is next — real push notifications and AI-polished prose are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 

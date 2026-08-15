@@ -548,6 +548,74 @@ same person then showed a real costed free slot ("Saturday 6:15pm is open
 and costs you nothing," §11's own example shape). Logging the interaction
 cleared the drift signal on the next load. All test data cleaned up after.
 
+## Phase 6.5 — promotion loop and derived reminders
+
+`promotionDemotion.ts` (pure — trigger checks, deterministic proposal text,
+spec §10.6) + `derivedReminders.ts` (pure — per-source title formatting,
+spec §10.7's own example phrasing) + `generateDerivedReminders.ts` (the DB
+wrapper and third named cron — "derived-reminder generation nightly,"
+§13) + `src/app/actions/promotions.ts` / `demotions.ts` (accept/decline) +
+new actionable "Proposals" section on `/advisor`.
+
+**Real schema gap, not an interpretation call — fixed with a migration.**
+Promotion's anti-nagging design ("offered once per reminder, ever...
+declining is permanent") has a dedicated tracking column
+(`reminders.promotion_offered`) already in the spec's own schema. Demotion
+gets the identical framing in the same paragraph but the schema never gave
+`tasks` an equivalent column. Added
+`supabase/migrations/20260815000000_task_demotion_offered.sql`
+(`demotion_offered boolean not null default false`, additive and
+idempotent) rather than reproducing promotion's the-real-thing design
+minus its own safety rail. Applied directly to the live project via
+`SUPABASE_DB_URL` for testing, plus registered in `_calendula_migrations`
+so the in-app Connect flow (`runMigrations.ts`) sees it as already-applied
+rather than re-running it.
+
+**One derived-reminder source (of six) has no implementation — the
+underlying data doesn't exist, not an ambiguity to resolve.** §10.7's table
+lists "Task with a person_id" → "Text Dee back," but `tasks` (§5.4) has no
+`person_id` column at all — only `reminders` does. Unlike every other gap
+resolved in this project (a formula default, a documented interpretation),
+there's no reasonable substitute when the source data is simply absent;
+flagged in `generateDerivedReminders.ts` rather than fabricated. The other
+five sources (activity holds, meeting-offer follow-ups, habit shortfall,
+task-at-risk, relationship-cadence drift) are all fully implemented.
+
+The spec's own example title for the `activity_holds` source is "Book
+Butter Pot for camping" — "Butter Pot" is a specific place name with
+nowhere to live (`activity_holds` has no location field); uses the
+activity type's own name instead ("Book Camping") rather than inventing a
+venue the data model can't carry.
+
+Cascade-on-resolve (§10.7: "completed, cancelled, or deleted... cascades to
+dismissed") is wired everywhere a parent record naturally resolves:
+releasing an activity hold, confirming *or* expiring a meeting offer,
+completing a task's check-in, logging a person interaction. Habit-shortfall
+derived reminders have no cascade wiring — nothing in this build ever
+deletes a habit, so there's no natural trigger point for it yet, not a
+silently-dropped case.
+
+Verified live end to end against the real connected project. **Promotion**:
+created a real reminder, deferred it three times through the actual
+outcome buttons (each defer re-queued it for reassignment via the
+15-minute-cron endpoint, triggered manually to avoid an actual 15-minute
+wait), and the Advisor page rendered the proposal in the spec's exact
+phrasing — `"has come up 3 times. That's probably not a 2-minute thing.
+Schedule 45 minutes for it?"` Accepting it created a real task (45
+minutes, `remaining_minutes: 0` after the triggered re-solve — confirming
+the solver actually placed it, not just that the row was inserted) and set
+`reminder.status = 'promoted'`. **Demotion**: seeded a task with
+`skip_count: 3` directly (three real skip cycles through the check-in UI
+would work identically but cost more test-cycle time for a mechanism
+that's a straightforward column comparison); the proposal appeared,
+accepting it set `task.status = 'demoted'` and created a real reminder due
+9am the next morning. **Derived reminders + cascade** (the phase's own
+explicit acceptance line): held a real activity window, ran the
+derived-reminder cron — a real "Book TEST Skiing" reminder appeared with
+`source: 'derived'` correctly linked to the hold's id; released the hold —
+the derived reminder's `status` flipped to `'dismissed'` on the next
+load, exactly as specified. All test data cleaned up after.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
