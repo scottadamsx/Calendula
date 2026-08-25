@@ -671,6 +671,70 @@ one update, removed the other event from the input entirely and got exactly
 one delete — both of the phase's own acceptance criteria, proven against
 live data. All test rows cleaned up after.
 
+## Post-launch fixes — found by Scotty's own live use, not by any test
+
+Two real bugs surfaced the moment Scotty actually used his own real data
+(a genuine vacation, a genuine recurring weekly commitment) rather than
+synthetic test fixtures — the same "only live use catches it" pattern as
+every other bug in this project, this time from the user's side rather
+than mine.
+
+1. **No validation ever stopped two fixed blocks from genuinely
+   overlapping in real time.** Scotty had a recurring "Sunday Reset"
+   (weekly) and a one-off "Vacation to Trinidad" spanning a week that
+   happened to include one of those Sundays — nothing rejected this at
+   creation time, so both landed as `hard` placements on the same block,
+   and the grid engine's own invariant ("two placements can't claim the
+   same block," intended to catch *solver* bugs) correctly fired — as a
+   raw thrown exception that crashed the whole `/week` page instead of
+   surfacing a clear message. Fixed in two parts: `findFixedBlockConflict`
+   (pure, `fixedBlocks.ts`) checks a candidate block's expanded
+   occurrences against every existing block's expanded occurrences (over
+   `far_horizon_days`, not just `horizon_days`, since a weekly recurrence
+   can land inside a one-off block many weeks out) *before* insert, and
+   `createFixedBlock` now rejects with a specific message ("That overlaps
+   'X' (time) — pick a different time") instead of ever letting two
+   overlapping hard commitments reach `placements` at all. The existing
+   conflicting data was repaired by hand (the recurring block's own row
+   stopped recurring right after its one already-happened occurrence; a
+   second row resumes the same weekly series the first Sunday after the
+   vacation ends) rather than deleted, since the user's actual intent
+   ("skip just this one occurrence, keep the rest") has no dedicated
+   mechanism in the schema (no `EXDATE`/exception-date concept) — a real,
+   separate gap worth a proper feature if this need recurs, not built
+   speculatively here.
+2. **`createFixedBlock` never re-solved after syncing the new block's own
+   placement.** Discovered while fixing bug #1: repairing the data above
+   surfaced a second collision — a `habit`-sourced soft placement (from an
+   earlier, unrelated solve) sitting inside the newly-hardened block's
+   time window, because nothing had ever told the solver to reconsider
+   already-placed soft work now that a new hard commitment existed there.
+   `syncFixedBlockPlacements` only ever touches `source_type = 'fixed'`
+   rows — it has no way to move a task or habit out of the way itself.
+   This is a real, general gap in `createFixedBlock` (not specific to the
+   two-fixed-blocks scenario above): creating *any* fixed block that lands
+   on top of an already-scheduled soft placement would leave that
+   collision sitting there un-remediated. Fixed by adding a real
+   `requestSolve()` call after the sync, matching the same trigger already
+   used for check-in-driven reschedules.
+3. **A single "repeats weekly" checkbox only ever repeated on the exact
+   weekday of the start date** — reported directly by Scotty ("I have
+   work every day Monday to Friday, we need a custom repeats thing,
+   because it's not gonna make me put it in 5 separate times"). Replaced
+   with a per-weekday checkbox group (`AddFixedBlockForm.tsx`); any subset
+   of days builds one `BYDAY=` list (e.g. `BYDAY=MO,TU,WE,TH,FR`), which
+   `expandFixedBlock`'s existing floating-clock RRULE handling already
+   supported correctly with zero changes — confirmed with a dedicated
+   test proving one occurrence per matching weekday, not per start date.
+
+Verified live end to end: recreated the exact overlap scenario against a
+disposable candidate insert (rejected with the correct named-conflict
+message, nothing written); re-ran a real `solve()` for the actual account
+and confirmed the colliding habit placement moved off the newly-hardened
+Sunday block; created a real Mon-Fri fixed block through the actual form
+and confirmed (via a wider-horizon sync) it produced one placement per
+weekday, none on Sat/Sun. All test data cleaned up after.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,

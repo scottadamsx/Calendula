@@ -55,6 +55,37 @@ export function expandFixedBlock(
   });
 }
 
+export interface FixedBlockOccurrence {
+  title: string;
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Pure range-overlap check across two expanded-occurrence lists. Used to
+ * reject a new fixed block at creation time when it would overlap an
+ * existing one, rather than letting both reach `placements` and trip the
+ * grid engine's "two placements can't claim the same block" invariant —
+ * that invariant exists to catch solver bugs, not to gracefully handle a
+ * user creating two genuinely-overlapping manual commitments, and letting
+ * it fire on real user data crashes the whole page instead of asking for
+ * a different time. Returns the *first* conflicting existing occurrence
+ * (by candidate-then-existing scan order) so the caller can name it.
+ */
+export function findFixedBlockConflict(
+  candidateOccurrences: Range[],
+  existingOccurrences: FixedBlockOccurrence[],
+): FixedBlockOccurrence | null {
+  for (const candidate of candidateOccurrences) {
+    for (const existing of existingOccurrences) {
+      if (candidate.start < existing.end && candidate.end > existing.start) {
+        return existing;
+      }
+    }
+  }
+  return null;
+}
+
 function floatingFromLocal(dt: DateTime): Date {
   return new Date(Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second));
 }

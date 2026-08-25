@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DateTime } from "luxon";
-import { expandFixedBlock } from "./fixedBlocks";
+import { expandFixedBlock, findFixedBlockConflict } from "./fixedBlocks";
 
 const zone = "America/St_Johns";
 
@@ -66,5 +66,60 @@ describe("expandFixedBlock", () => {
       DateTime.fromObject({ year: 2026, month: 9, day: 1 }, { zone }).toJSDate(),
     );
     expect(outOfRange).toHaveLength(0);
+  });
+
+  it("expands a multi-day BYDAY rule (e.g. work Mon-Fri) to one occurrence per matching weekday, not just the start date's own weekday", () => {
+    // A Monday 9am-5pm shift, repeating Mon-Fri — the fix for "I have work
+    // every day Monday to Friday" needing 5 separate entries.
+    const monday = DateTime.fromObject({ year: 2026, month: 9, day: 7, hour: 9 }, { zone }); // a Monday
+    const block = {
+      id: "weekday-job",
+      startsAt: monday.toJSDate(),
+      endsAt: monday.plus({ hours: 8 }).toJSDate(),
+      rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+    };
+
+    const occurrences = expandFixedBlock(
+      block,
+      zone,
+      monday.toJSDate(),
+      monday.plus({ days: 6 }).toJSDate(), // through Sunday — the range is inclusive on both ends, so +7 would also catch next Monday
+    );
+    // Mon, Tue, Wed, Thu, Fri of that week — not Sat/Sun.
+    expect(occurrences).toHaveLength(5);
+    const weekdays = occurrences.map((o) => DateTime.fromJSDate(o.start, { zone }).weekday);
+    expect(weekdays).toEqual([1, 2, 3, 4, 5]);
+    // Same time-of-day (9am) preserved on every occurrence.
+    expect(occurrences.every((o) => DateTime.fromJSDate(o.start, { zone }).hour === 9)).toBe(true);
+  });
+});
+
+describe("findFixedBlockConflict", () => {
+  const zone2 = "America/St_Johns";
+  function local(y: number, m: number, d: number, h = 0, mi = 0): Date {
+    return DateTime.fromObject({ year: y, month: m, day: d, hour: h, minute: mi }, { zone: zone2 }).toJSDate();
+  }
+
+  it("catches a recurring block landing inside a longer one-off block (the live bug: a weekly habit falling during a vacation week)", () => {
+    const vacation = { title: "Vacation to Trinidad", start: local(2026, 8, 28, 11, 35), end: local(2026, 9, 5, 23, 35) };
+    // "Sunday Reset" recurs weekly; one of its occurrences (Aug 30) falls inside the vacation.
+    const candidateOccurrences = [
+      { start: local(2026, 8, 23, 10, 30), end: local(2026, 8, 24, 0, 30) }, // before vacation, fine
+      { start: local(2026, 8, 30, 10, 30), end: local(2026, 8, 31, 0, 30) }, // inside vacation — conflict
+    ];
+    const conflict = findFixedBlockConflict(candidateOccurrences, [vacation]);
+    expect(conflict?.title).toBe("Vacation to Trinidad");
+  });
+
+  it("returns null when nothing overlaps", () => {
+    const existing = [{ title: "Class", start: local(2026, 8, 24, 9), end: local(2026, 8, 24, 10) }];
+    const candidate = [{ start: local(2026, 8, 24, 10), end: local(2026, 8, 24, 11) }]; // back-to-back, not overlapping
+    expect(findFixedBlockConflict(candidate, existing)).toBeNull();
+  });
+
+  it("detects partial overlap, not just containment", () => {
+    const existing = [{ title: "Shift", start: local(2026, 8, 24, 9), end: local(2026, 8, 24, 17) }];
+    const candidate = [{ start: local(2026, 8, 24, 16), end: local(2026, 8, 24, 18) }];
+    expect(findFixedBlockConflict(candidate, existing)?.title).toBe("Shift");
   });
 });
