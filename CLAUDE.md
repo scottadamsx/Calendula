@@ -735,6 +735,104 @@ Sunday block; created a real Mon-Fri fixed block through the actual form
 and confirmed (via a wider-horizon sync) it produced one placement per
 weekday, none on Sat/Sun. All test data cleaned up after.
 
+## Phase 8 — conversational chat agent (post-launch, not a numbered spec phase)
+
+Built at Scotty's direct request, mid-session, after using the shipped app
+live: not calendar import (that's Phase 7, still OAuth-blocked) — instead,
+the app's main space became a chat agent that reads and writes the real
+calendar through conversation, asking multiple-choice questions when it's
+genuinely ambiguous. Spec §13 only ever named a one-shot `POST /api/ingest`
+(never built, same `ANTHROPIC_API_KEY` gate as every other LLM-dependent
+piece since Phase 4); a multi-turn conversational surface with a pause/
+resume question flow is genuinely new, not a spec gap being filled in.
+
+**Landing page swap, not an addition.** Per direct confirmation, the chat
+(`src/app/page.tsx`) replaces the old Overview/QA-tracker page at `/` rather
+than living alongside it as a separate nav item. The old content moved to
+`/status` (`src/app/status/page.tsx`, unchanged apart from copy calling it
+the "engineering status board" behind the chat) so the QA tracker stays
+reachable. `Sidebar.tsx`/`Topbar.tsx` both renamed the `/` nav entry to
+"Chat" and appended "Build status" pointing at `/status`.
+
+**Manual tool-use loop, not the SDK's tool runner
+(`client.beta.messages.tool_runner`) — a deliberate choice, not an
+oversight.** The runner drives its whole loop inside one Node process; this
+conversation has to survive across separate, stateless Next.js server-action
+requests whenever the model calls `ask_multiple_choice` and the *user*
+supplies the next input by clicking a button, arbitrarily later. `runAgentTurn`
+(`src/lib/agent/chat.ts`) is a plain `for` loop (10-iteration ceiling) that
+calls `messages.create` directly, executes any non-`ask_multiple_choice` tool
+calls itself via `executeAgentTool`, and — critically — stops and returns
+control the instant it sees an `ask_multiple_choice` tool_use, *before*
+executing it. No separate "pending question" table or status column exists:
+an unanswered `tool_use` block sitting as the conversation's last persisted
+message *is* the pause state, and the user's click is just the next turn's
+`tool_result` continuing the same `messages` array. `calendula_chat_messages`
+(new table, `supabase/migrations/20260826000000_chat_messages.sql`) stores
+`role` + a `jsonb content` column holding the *entire* Anthropic content-block
+array verbatim (not extracted text) — required to correctly replay a
+conversation that included `tool_use`/`tool_result` blocks, since the API
+demands the full prior turn back, not a summary of it.
+
+**Every write tool reuses the exact existing server action, via a
+constructed `FormData`, rather than reimplementing anything.**
+`executeAgentTool` (`src/lib/agent/tools.ts`) builds a `FormData` object per
+call and invokes `createTask`/`createHabit`/`createFixedBlock`/
+`createReminder` directly — the same functions the existing add-forms call,
+called the same way a form submission would. This means the chat agent gets
+the fixed-block conflict guard, the post-create re-solve trigger, and every
+other validation rule built earlier in this project for free, with zero
+duplicated logic — including a rule added in this very session. A sixth
+tool, `get_week_overview`, is read-only: calls `buildGrid` + `mergeBySource`
+directly (no action exists for this) and returns a compact JSON summary.
+`ask_multiple_choice` has no `execute` case at all — deliberately
+unreachable in `executeAgentTool`, since the orchestration loop always
+intercepts it first.
+
+**Datetime convention: plain local strings, no offset — matching the
+existing forms exactly rather than inventing a second convention.** The
+system prompt instructs the model to emit `"YYYY-MM-DDTHH:mm"`, the exact
+format a browser's native `datetime-local` input sends, which the existing
+actions already parse as wall-clock local time. If that parsing has an edge
+case, it already equally affects the form UI and isn't new to the chat
+surface.
+
+**Every date-sensitive answer is grounded in the real current instant, not
+inferred by the model.** The system prompt embeds the actual UTC `now` and
+the user's IANA timezone on every single turn (`systemPrompt(timezone)` in
+`chat.ts`), rather than trusting the model's own notion of "today."
+
+Verified live end to end against the real connected project and a real
+`ANTHROPIC_API_KEY`, five scenarios:
+1. **Task creation** — "Add a TEST task... due in 3 days" produced a real
+   `calendula_tasks` row and, after the wrapper action's own re-solve, a real
+   placement (`remaining_minutes: 0`, confirming the solver actually placed
+   it, not just that the row was inserted).
+2. **Multiple-choice pause** — asking to add a recurring class without
+   saying which weekday produced a genuine `ask_multiple_choice` tool_use
+   that correctly stopped the turn before any tool executed; the UI rendered
+   real option buttons from the model's own generated options.
+3. **Answer + resume** — clicking an option posted a `tool_result` back,
+   which correctly resumed the same paused turn and completed the
+   `create_fixed_block` call with the chosen weekday.
+4. **Conflict guard surfaced honestly through the chat layer** — the
+   resulting fixed-block create hit the same overlap conflict guard built
+   earlier this session; the agent reported the specific rejection message
+   truthfully rather than claiming success, matching the system prompt's own
+   "never claim something worked if the tool result says it didn't" rule.
+5. **`get_week_overview`** — "What's on my calendar this week?" correctly
+   called the tool twice in one turn (once for the near-empty current week,
+   once for next week, matching its own "here's next week too" framing) and
+   produced an accurate, correctly-formatted answer against real placement
+   data (a real recurring habit, a real one-off vacation block, and real
+   Mon-Fri work placements) — not a hallucinated summary.
+
+All synthetic test data from this verification (the "TEST write the report"
+task and its placement, the "TEST Chemistry Lecture" fixed block if created,
+and all rows written to `calendula_chat_messages` during testing) was
+deleted afterward — none of it was a real user conversation or a real
+commitment.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
@@ -768,18 +866,18 @@ The SPEC-GAP-RETRO audit: enumerate every design decision made during implementa
 that isn't in the spec. For each, say what was decided, where in the code, and why it
 wasn't escalated. An empty list is a claim — it will be spot-checked against the diff.
 
-## SPEC-GAP-RETRO audit (as of Phase 7, 2026-08-15)
+## SPEC-GAP-RETRO audit (as of Phase 8, 2026-09-06)
 
 Every implementation decision made across this build that the spec doesn't
 literally spell out, in build order. Each entry: what was decided, where,
 why it wasn't escalated as a blocking `SPEC-GAP`. Full reasoning for each
 lives in that phase's own section above — this is the index, not a
-replacement. 51 entries; treat that count, not "zero," as the honest
+replacement. 59 entries; treat that count, not "zero," as the honest
 baseline for a project this size, and spot-check a sample against the diff
 rather than taking the list on faith.
 
-**Escalated and resolved by asking (the only two cases — everything else
-below was resolved in-place):**
+**Escalated and resolved by asking (everything else below was resolved
+in-place):**
 1. Phase 4.6 — real web push has no schema, VAPID setup, or dispatcher
    anywhere in the spec (a missing subsystem, not an ambiguous detail).
    Asked directly; deferred by explicit choice, documented in Phase 4.6's
@@ -789,6 +887,12 @@ below was resolved in-place):**
    *external-account* blockers flagged the same way `ANTHROPIC_API_KEY`
    was from Phase 4 onward, without re-asking each time — consistent
    treatment of one already-answered category, not a new decision each time.
+3. Phase 8 — whether the new chat agent should live alongside the Overview
+   page or replace it as `/`. Asked directly (AskUserQuestion); answered
+   "replace," with the old content relocated to `/status` rather than
+   deleted. The only UI-placement decision in this project resolved by
+   asking rather than by picking the cheaper-to-build option and
+   documenting why.
 
 **Forced deviations from the spec's literal text (not ambiguities — the
 literal spec breaks against real conditions):**
@@ -971,6 +1075,58 @@ in-place:**
     pending/delivered/acknowledged/done/dismissed/promoted) — a deferred
     outcome maps to `'pending'` with `defer_count` incremented instead.
     Phase 4.6, `recordReminderOutcome`.
+
+**Post-launch — real bugs and a real UX gap found by Scotty's own live use
+of the finished product (distinct from the nine found via my own live
+verification during each phase — these surfaced only once a real person
+used real data):**
+52. No validation ever stopped two fixed blocks from genuinely overlapping
+    in wall-clock time — the grid engine's own no-double-placement
+    invariant (built to catch *solver* bugs) silently assumed this could
+    never happen, and a real recurring block landing inside a real one-off
+    vacation block threw a raw, page-crashing exception instead. Fixed
+    with a pre-insert conflict guard, per direct instruction to surface a
+    named conflict and let the user pick a different time rather than
+    auto-resolving. Post-launch fixes section, `fixedBlocks.ts`.
+53. `createFixedBlock` never re-solved after creating a block, found while
+    repairing #52's data — an already-placed soft habit placement could
+    sit uncorrected under a newly-hardened block indefinitely. Post-launch
+    fixes section.
+54. The single "repeats weekly" checkbox only ever repeated on the exact
+    weekday of the block's own start date — the spec's add-form pseudocode
+    never describes a repeat-days control at all, so this wasn't a literal
+    contradiction, but a real Mon-Fri commitment made the limitation
+    immediately and obviously unusable in practice. Replaced with a
+    per-weekday picker building a multi-day `BYDAY` rule; required zero
+    changes to `expandFixedBlock` itself. Post-launch fixes section,
+    `AddFixedBlockForm.tsx`.
+
+**Phase 8 — decisions made building the conversational chat agent, a
+feature with no spec section to fill a gap in at all (§13 names a one-shot
+ingest endpoint, never a multi-turn conversation):**
+55. Manual tool-use loop instead of the SDK's own tool runner
+    (`client.beta.messages.tool_runner`) — the runner owns its loop inside
+    one process; this conversation must survive across separate stateless
+    HTTP requests whenever `ask_multiple_choice` pauses a turn for a
+    browser click. `runAgentTurn`, `chat.ts`.
+56. Every write tool (`create_task`/`create_habit`/`create_fixed_block`/
+    `create_reminder`) calls the *exact* existing server action via a
+    constructed `FormData`, rather than reimplementing any validation —
+    inherits the Phase-8-adjacent conflict guard (#52) and re-solve trigger
+    (#53) for free. `tools.ts`.
+57. `calendula_chat_messages.content` stores the entire Anthropic
+    content-block array as `jsonb`, not extracted text — required to
+    correctly replay a conversation containing `tool_use`/`tool_result`
+    blocks, since the API needs the full prior turn back verbatim.
+    `20260826000000_chat_messages.sql`.
+58. Datetime convention reused verbatim from the existing add-forms (plain
+    `"YYYY-MM-DDTHH:mm"` local string, no offset) rather than inventing a
+    second convention for the chat surface — any edge case in that parsing
+    already equally affects the form UI. `tools.ts`/`chat.ts`.
+59. `get_week_overview` is read-only and has no corresponding server
+    action to call — calls `buildGrid` + `mergeBySource` directly, the
+    only chat tool that doesn't follow the FormData-reuse pattern in #56,
+    because there's nothing to reuse.
 
 ## Cadence
 
