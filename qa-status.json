@@ -21,11 +21,44 @@
     "verifiedAt": "2026-07-28T14:27:09.797Z",
     "bugs": []
   },
-  "phase-3": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-4": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-4-5": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-4-6": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-5": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-6": { "verified": false, "verifiedAt": null, "bugs": [] },
-  "phase-6-5": { "verified": false, "verifiedAt": null, "bugs": [] }
+  "phase-3": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-4": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-4-5": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-4-6": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-5": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-6": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-6-5": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  },
+  "phase-8": {
+    "verified": false,
+    "verifiedAt": null,
+    "bugs": []
+  }
 }

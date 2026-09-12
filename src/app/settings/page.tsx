@@ -41,8 +41,6 @@ export default function SettingsPage() {
             <EnvStatus name="SUPABASE_SERVICE_ROLE_KEY" />
             <EnvStatus name="SUPABASE_DB_URL" />
             <EnvStatus name="ANTHROPIC_API_KEY" />
-            <EnvStatus name="GOOGLE_CLIENT_ID" />
-            <EnvStatus name="GOOGLE_CLIENT_SECRET" />
           </ul>
         </Panel>
 

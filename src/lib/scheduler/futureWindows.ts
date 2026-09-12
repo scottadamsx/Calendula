@@ -38,7 +38,7 @@ export function deadlineProximityWeight(deadline: Date, day: Date): number {
  * normals for the date." No weather data source is configured — nothing in
  * the spec names one, and unlike push's VAPID keys (Phase 4.6), a real
  * forecast/climate-normals feed needs an external API account, the same
- * class of blocker as ANTHROPIC_API_KEY and Google OAuth (flagged, not
+ * class of blocker as ANTHROPIC_API_KEY (flagged, not
  * routed around). Falls back to a neutral 0.5 — no signal either way — so
  * its `+0.4` term never biases the ranking until a real data source exists.
  * `scoreCandidateWindow` below still gates the whole term on

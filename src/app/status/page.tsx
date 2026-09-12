@@ -1,6 +1,5 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { Badge } from "@/components/ui/Badge";
 import { PhaseRow } from "@/components/qa/PhaseRow";
 import { CalendulaMark } from "@/components/brand/CalendulaMark";
 import { readQaStatus, emptyPhaseState } from "@/lib/qa/store";
@@ -123,33 +122,30 @@ const BUILT_PHASES = [
       "Expected: a \"Book [activity]\" reminder briefly exists (visible on Reminders if you check right after holding), and disappears once released.",
     ],
   },
-];
-
-const UPCOMING_PHASES = [
   {
-    name: "Phase 7 — Google Calendar import",
-    status: "next" as const,
-    detail: "Pulls your existing Google Calendar events in automatically. One-way only — never edits Google Calendar itself. Partially built: the import/update/delete reconciliation logic is done and tested against real data, but it's blocked on a Google Cloud OAuth app — see Connectors for status.",
+    id: "phase-8",
+    name: "Phase 8 — Chat agent",
+    detail: "The main page. Talk to Calendula in plain language and it adds tasks, habits, fixed commitments, and reminders to your real calendar, asking a multiple-choice question when something is genuinely ambiguous.",
+    howToTest: [
+      "Go to Chat and type: \"I have a dentist appointment next Tuesday at 2pm for an hour.\"",
+      "Expected: it confirms in one or two sentences, and the block shows up on Week.",
+      "Type: \"Add a class called Chem Lab, 10 to 11:30, but I forget if it's Tuesdays or Thursdays.\"",
+      "Expected: it asks you which day with buttons — click one and it finishes the job.",
+      "Type: \"What's on my calendar this week?\" — expected: an accurate summary of what Week shows.",
+    ],
   },
 ];
 
-const STATUS_LABEL: Record<
-  "next" | "later",
-  { label: string; tone: "info" | "neutral" }
-> = {
-  next: { label: "Next", tone: "info" },
-  later: { label: "Not started", tone: "neutral" },
-};
 
-export default async function OverviewPage() {
+export default async function StatusPage() {
   const qaStatus = await readQaStatus();
 
   return (
     <>
       <PageHeader
         eyebrow="Build status"
-        title="Calendula is under construction"
-        lead="Ten pieces are built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, defending time for future plans, reconciliation, and the promotion/demotion loop with derived reminders. Google Calendar import is next — real push notifications and AI-polished prose are intentionally deferred for now. Click a phase below to try it yourself and say whether it actually works. The Chat page is now the main space — this page is the engineering status board behind it."
+        title="Calendula is built"
+        lead="Everything planned is built: the plumbing, a week view, auto-scheduling for your to-do list, habits, finding meeting times, reminders, digest batching, defending time for future plans, reconciliation, the promotion/demotion loop with derived reminders, and the chat agent that is now the main page. External calendar import was dropped by choice; real push notifications and AI-polished advisor prose are intentionally deferred. Click a phase below to try it yourself and say whether it actually works — this page is the engineering status board behind the Chat page."
         action={<CalendulaMark size={88} animated className="shrink-0" />}
       />
 
@@ -176,25 +172,6 @@ export default async function OverviewPage() {
           </ul>
         </Panel>
 
-        <Panel>
-          <h2 className="text-base font-semibold mb-4">Upcoming</h2>
-          <ul className="flex flex-col gap-3">
-            {UPCOMING_PHASES.map((phase) => (
-              <li
-                key={phase.name}
-                className="flex items-start justify-between gap-4 pb-3 border-b border-line last:border-0 last:pb-0"
-              >
-                <div>
-                  <div className="text-sm font-medium text-ink">{phase.name}</div>
-                  <div className="text-xs text-ink-soft mt-0.5">{phase.detail}</div>
-                </div>
-                <Badge tone={STATUS_LABEL[phase.status].tone}>
-                  {STATUS_LABEL[phase.status].label}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </Panel>
       </div>
     </>
   );

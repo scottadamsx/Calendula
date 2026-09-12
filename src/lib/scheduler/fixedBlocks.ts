@@ -182,8 +182,8 @@ export async function syncFixedBlockPlacements(
     if (upsertError) throw upsertError;
   }
 
-  // A real bug found live: when a block's time changes (e.g. a Google
-  // Calendar edit) or an rrule occurrence stops applying, the upsert above
+  // A real bug found live: when a block's time changes (an edit to its
+  // start time) or an rrule occurrence stops applying, the upsert above
   // can't clean up the *old* placement — its starts_at changed, so it's a
   // different conflict key, not the same row being replaced. Left alone,
   // the grid ends up with both the stale and the current occurrence as

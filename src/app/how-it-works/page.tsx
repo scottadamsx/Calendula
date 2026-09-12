@@ -26,8 +26,11 @@ export default function HowItWorksPage() {
           <h2 className="text-base font-semibold mb-3">The flow</h2>
           <ol className="flex flex-col gap-3 text-sm text-ink-soft">
             <li>
-              <strong className="text-ink">1. Ingestion (LLM).</strong> Natural language becomes
-              structured rows — tasks, fixed blocks, reminders, people.
+              <strong className="text-ink">1. Ingestion (LLM) — the Chat page.</strong> You
+              describe your life in plain language; the agent turns it into structured rows —
+              tasks, habits, fixed blocks, reminders — through the exact same validated actions
+              the forms use, and asks a multiple-choice question when it genuinely can&rsquo;t
+              tell what you mean. It never picks a time slot itself; that is the solver&rsquo;s job.
             </li>
             <li>
               <strong className="text-ink">2. Truth layer.</strong> Postgres tables, every one
