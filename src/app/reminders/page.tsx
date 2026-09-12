@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Badge } from "@/components/ui/Badge";
-import { AddReminderForm } from "@/components/reminders/AddReminderForm";
+import { AddReminderButton } from "@/components/reminders/AddReminderButton";
 import { ReminderOutcomeButtons } from "@/components/reminders/ReminderOutcomeButtons";
 import { formatDigestMessage } from "@/lib/scheduler/reminders";
 
@@ -120,15 +120,15 @@ export default async function RemindersPage() {
         eyebrow="Reminders"
         title="Nudges, not work"
         lead="Attention-budgeted — a small daily allowance of interruptions, spent only at moments that are actually receptive to one."
+        action={<AddReminderButton />}
       />
 
       <div className="flex flex-col gap-4">
-        <AddReminderForm />
 
         <Panel>
           <h2 className="text-base font-semibold mb-3">Pending</h2>
           {(reminders ?? []).length === 0 ? (
-            <p className="text-xs text-ink-faint">Nothing yet — add one above.</p>
+            <p className="text-xs text-ink-faint">Nothing yet — use + Reminder.</p>
           ) : (
             <ul className="flex flex-col gap-3">
               {[...groups.entries()].map(([batchId, members]) => (

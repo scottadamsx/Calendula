@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
-import { Panel } from "@/components/ui/Panel";
+import { Field, inputClass } from "@/components/ui/Field";
 import { createFixedBlock, type CreateFixedBlockResult } from "@/app/actions/fixedBlocks";
 
 const initialState: CreateFixedBlockResult | null = null;
@@ -17,73 +17,48 @@ const WEEKDAYS = [
   { code: "SU", label: "Sun" },
 ] as const;
 
-export function AddFixedBlockForm() {
+export function AddFixedBlockForm({ onSuccess }: { onSuccess?: (message: string) => void }) {
   const [state, formAction, isPending] = useActionState(createFixedBlock, initialState);
+  useEffect(() => {
+    if (state?.ok) onSuccess?.(state.message);
+  }, [state, onSuccess]);
 
   return (
-    <Panel>
-      <h2 className="text-base font-semibold mb-1">Add a fixed commitment</h2>
-      <p className="text-xs text-ink-soft mb-3">
-        A class, shift, or appointment — never moved by the solver. Solid dark blocks below.
-      </p>
-      <form action={formAction} className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
-          <label className="flex flex-col gap-1 flex-1 min-w-[140px]">
-            <span className="text-xs font-medium text-ink-soft">Title</span>
-            <input
-              type="text"
-              name="title"
-              required
-              className="h-10 px-3 text-sm rounded-sm border border-line bg-surface text-ink focus-visible:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1 w-[200px]">
-            <span className="text-xs font-medium text-ink-soft">Starts</span>
-            <input
-              type="datetime-local"
-              name="startsAt"
-              required
-              className="font-data h-10 px-3 text-sm rounded-sm border border-line bg-surface text-ink focus-visible:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1 w-[200px]">
-            <span className="text-xs font-medium text-ink-soft">Ends</span>
-            <input
-              type="datetime-local"
-              name="endsAt"
-              required
-              className="font-data h-10 px-3 text-sm rounded-sm border border-line bg-surface text-ink focus-visible:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1 w-[150px]">
-            <span className="text-xs font-medium text-ink-soft">Location (optional)</span>
-            <input
-              type="text"
-              name="location"
-              className="h-10 px-3 text-sm rounded-sm border border-line bg-surface text-ink focus-visible:outline-none"
-            />
-          </label>
-          <Button type="submit" size="md" disabled={isPending}>
-            {isPending ? "Adding…" : "Add"}
-          </Button>
+    <form action={formAction} className="flex flex-col gap-4">
+      <Field label="What is it">
+        <input type="text" name="title" required autoFocus placeholder="Work, CP4485 lecture, dentist…" className={inputClass} />
+      </Field>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Starts">
+          <input type="datetime-local" name="startsAt" required className={`font-data ${inputClass}`} />
+        </Field>
+        <Field label="Ends">
+          <input type="datetime-local" name="endsAt" required className={`font-data ${inputClass}`} />
+        </Field>
+      </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-ink-soft">Repeats every week on</span>
+        <div className="flex flex-wrap gap-2">
+          {WEEKDAYS.map((day) => (
+            <label key={day.code} className="cursor-pointer">
+              <input type="checkbox" name="repeatsOnDays" value={day.code} className="peer sr-only" />
+              <span className="inline-flex h-8 items-center rounded-full border border-line px-3 text-xs font-semibold text-ink-soft peer-checked:border-brand-400 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand-400">
+                {day.label}
+              </span>
+            </label>
+          ))}
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-ink-soft">
-            Repeats weekly on (leave all unchecked for a one-off)
-          </span>
-          <div className="flex items-center gap-3 flex-wrap">
-            {WEEKDAYS.map((day) => (
-              <label key={day.code} className="flex items-center gap-1.5">
-                <input type="checkbox" name="repeatsOnDays" value={day.code} className="h-4 w-4" />
-                <span className="text-xs text-ink-soft">{day.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      </form>
-      {state && (
-        <p className={`text-xs mt-2 ${state.ok ? "text-accent-habit" : "text-danger"}`}>{state.message}</p>
-      )}
-    </Panel>
+        <span className="text-xs text-ink-faint">Leave them all off for a one-time thing.</span>
+      </div>
+      <Field label="Location (optional)">
+        <input type="text" name="location" className={inputClass} />
+      </Field>
+      {state && !state.ok && <p className="text-xs text-danger">{state.message}</p>}
+      <div className="flex justify-end pt-2">
+        <Button type="submit" size="md" disabled={isPending}>
+          {isPending ? "Adding…" : "Add commitment"}
+        </Button>
+      </div>
+    </form>
   );
 }

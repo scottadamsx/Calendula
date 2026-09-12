@@ -132,6 +132,9 @@ const BUILT_PHASES = [
       "Type: \"Add a class called Chem Lab, 10 to 11:30, but I forget if it's Tuesdays or Thursdays.\"",
       "Expected: it asks you which day with buttons — click one and it finishes the job.",
       "Type: \"What's on my calendar this week?\" — expected: an accurate summary of what Week shows.",
+      "Type: \"Delete the dentist appointment.\" — expected: it looks up the calendar, deletes it, and it's gone from Week.",
+      "Go to History — expected: every one of those steps is listed with what happened (Added / Refused / Deleted / Looked).",
+      "On Week, click any block — expected: a sheet with its details and a Delete button. Use + Commitment / + Task / + Habit to add things.",
     ],
   },
 ];

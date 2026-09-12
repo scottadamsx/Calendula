@@ -4,8 +4,10 @@ import { createTask } from "@/app/actions/tasks";
 import { createHabit } from "@/app/actions/habits";
 import { createFixedBlock } from "@/app/actions/fixedBlocks";
 import { createReminder } from "@/app/actions/reminders";
+import { deleteCalendarItem, type DeletableKind } from "@/app/actions/deleteItems";
 import { buildGrid } from "@/lib/scheduler/buildGrid";
 import { mergeBySource } from "@/lib/scheduler/grid";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * The chat agent's tools — spec §13 only ever named a one-shot `POST
@@ -110,6 +112,25 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "list_calendar_items",
+    description:
+      "List everything on the user's calendar with its id: active tasks, active habits, fixed commitments (with their repeat days), and pending reminders. Call this before delete_calendar_item so you delete the right thing by id — never guess an id.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "delete_calendar_item",
+    description:
+      "Permanently delete one task, habit, fixed commitment, or reminder by id (from list_calendar_items). Frees its time and re-solves the schedule. There is no edit tool — to change something, delete it and create it again with the new details. Only delete what the user clearly asked to remove; if it's ambiguous which one they mean, ask.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["task", "habit", "fixed_block", "reminder"] },
+        id: { type: "string" },
+      },
+      required: ["kind", "id"],
+    },
+  },
+  {
     name: "ask_multiple_choice",
     description:
       "Ask the user a multiple-choice question when you genuinely need more information before acting (an ambiguous time, confirming which of several things they mean). The conversation pauses until they pick an option — don't use this for things you can reasonably infer or that don't matter.",
@@ -187,6 +208,32 @@ export async function executeAgentTool(name: string, input: Record<string, unkno
         end: DateTime.fromJSDate(p.end, { zone: ctx.timezone }).toFormat("h:mma"),
       }));
       return JSON.stringify({ weekOf: weekStart.toFormat("LLL d, yyyy"), items });
+    }
+    case "list_calendar_items": {
+      const supabase = await createClient();
+      const [tasks, habits, blocks, reminders] = await Promise.all([
+        supabase.from("calendula_tasks").select("id, title, remaining_minutes, deadline, priority").eq("user_id", ctx.userId).eq("status", "active"),
+        supabase.from("calendula_habits").select("id, title, duration_minutes, target_sessions_per_week").eq("user_id", ctx.userId).eq("active", true),
+        supabase.from("calendula_fixed_blocks").select("id, title, starts_at, ends_at, rrule, location").eq("user_id", ctx.userId),
+        supabase.from("calendula_reminders").select("id, title, kind, due_at, window_start, window_end").eq("user_id", ctx.userId).eq("status", "pending"),
+      ]);
+      const local = (iso: string | null) => (iso ? DateTime.fromISO(iso, { zone: ctx.timezone }).toFormat("ccc LLL d yyyy, h:mma") : null);
+      return JSON.stringify({
+        tasks: (tasks.data ?? []).map((t) => ({ id: t.id, title: t.title, remainingMinutes: t.remaining_minutes, deadline: local(t.deadline), priority: t.priority })),
+        habits: (habits.data ?? []).map((h) => ({ id: h.id, title: h.title, durationMinutes: h.duration_minutes, sessionsPerWeek: h.target_sessions_per_week })),
+        fixedBlocks: (blocks.data ?? []).map((b) => ({
+          id: b.id,
+          title: b.title,
+          firstStart: local(b.starts_at),
+          firstEnd: local(b.ends_at),
+          repeats: b.rrule ? b.rrule.replace("FREQ=WEEKLY;BYDAY=", "weekly on ") : null,
+          location: b.location,
+        })),
+        reminders: (reminders.data ?? []).map((r) => ({ id: r.id, title: r.title, kind: r.kind, dueAt: local(r.due_at), windowStart: local(r.window_start), windowEnd: local(r.window_end) })),
+      });
+    }
+    case "delete_calendar_item": {
+      return JSON.stringify(await deleteCalendarItem(String(input.kind) as DeletableKind, String(input.id ?? "")));
     }
     default:
       return JSON.stringify({ ok: false, message: `Unknown tool: ${name}` });

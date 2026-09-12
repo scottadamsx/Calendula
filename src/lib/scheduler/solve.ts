@@ -4,6 +4,7 @@ import { computeGrid, type Block, type SourceType } from "./grid";
 import { solveCore, type TaskInput } from "./solveCore";
 import { placeHabits, type HabitInput, type HabitSession } from "./placeHabits";
 import { assignReminders } from "./assignReminders";
+import { syncFixedBlockPlacements } from "./fixedBlocks";
 import type { EnergyLabel, SolveOptions, SolveResult } from "./types";
 
 /**
@@ -93,6 +94,14 @@ export async function solve(
   // Covers both task and habit soft placements — the only two sources a
   // solver produces.
   if (!dryRun) {
+    // Recurring fixed blocks only ever had placements out to the horizon as
+    // of their last sync; the horizon slides every day and the nightly sync
+    // cron doesn't run outside Vercel. Found live: "Work" (Mon-Fri) had two
+    // placements total, and the solver happily booked a report into 9-5.
+    // Every real solve now refreshes them first, so the grid it places
+    // against is the calendar as it actually stands.
+    await syncFixedBlockPlacements(userId, now, horizonEnd);
+
     const { error: deleteError } = await supabase
       .from("calendula_placements")
       .delete()
@@ -193,11 +202,28 @@ export async function solve(
     calibrationByCategory.set(row.category_id, row.multiplier);
   }
 
-  const taskInputs: TaskInput[] = (tasks ?? []).map((t) => ({
+  // `remaining_minutes` is work not yet *done* (check-in decrements it), not
+  // work not yet *placed*. Every solve deletes and re-places everything
+  // outside the freeze window, so the only minutes already spoken for are
+  // the frozen chunks that survived the delete — subtract those, place the
+  // rest. Phase 2 originally zeroed remaining_minutes on placement instead,
+  // which made every task silently vanish on the *next* solve (found live:
+  // a real 2-hour report with remaining 0, no placements, no completions).
+  const preservedMinutesByTaskId = new Map<string, number>();
+  for (const p of existingPlacements ?? []) {
+    if (p.source_type !== "task" || p.hardness !== "soft" || new Date(p.starts_at) >= freezeUntil) continue;
+    const minutes = Math.round((new Date(p.ends_at).getTime() - new Date(p.starts_at).getTime()) / 60_000);
+    preservedMinutesByTaskId.set(p.source_id, (preservedMinutesByTaskId.get(p.source_id) ?? 0) + minutes);
+  }
+
+  const taskInputs: TaskInput[] = (tasks ?? [])
+    .map((t) => ({ ...t, toPlace: t.remaining_minutes - (preservedMinutesByTaskId.get(t.id) ?? 0) }))
+    .filter((t) => t.toPlace > 0)
+    .map((t) => ({
     id: t.id,
     categoryId: t.category_id,
     title: t.title,
-    remainingMinutes: t.remaining_minutes,
+    remainingMinutes: t.toPlace,
     deadline: t.deadline ? new Date(t.deadline) : null,
     priority: t.priority,
     minChunkMinutes: t.min_chunk_minutes,
@@ -273,22 +299,11 @@ export async function solve(
     });
     const placementRows = [...taskRows, ...habitRows];
 
-    // Persist how much of each task is actually left — without this, a task
-    // that already got placed still shows its full original remaining_minutes
-    // forever, so the very next solve treats it as brand new and schedules it
-    // *again* alongside whatever it already placed. That's a real bug this
-    // caught live: a fully-placed task got a second, redundant placement on
-    // the next solve, landing close enough to an unrelated task's placement
-    // that a later grid's block quantization made them appear to collide.
-    const unplaceableByTaskId = new Map(result.unplaceable.map((u) => [u.taskId, u.remainingMinutes]));
-    const remainingUpdates = taskInputs
-      .map((t) => ({ id: t.id, newRemaining: unplaceableByTaskId.get(t.id) ?? 0, oldRemaining: t.remainingMinutes }))
-      .filter((t) => t.newRemaining !== t.oldRemaining)
-      .map((t) =>
-        supabase.from("calendula_tasks").update({ remaining_minutes: t.newRemaining }).eq("id", t.id),
-      );
-
-    const [placementsResult, auditResult, ...updateResults] = await Promise.all([
+    // remaining_minutes is deliberately NOT written here — placing work
+    // doesn't do it. The check-in (completions.ts) is the only thing that
+    // consumes minutes. (Phase 2's double-placement was the frozen-chunk
+    // case, handled above by subtracting preserved minutes, not by zeroing.)
+    const [placementsResult, auditResult] = await Promise.all([
       placementRows.length > 0
         ? supabase.from("calendula_placements").insert(placementRows)
         : Promise.resolve({ error: null }),
@@ -304,12 +319,10 @@ export async function solve(
         })),
         moved_count: result.movedCount,
       }),
-      ...remainingUpdates,
     ]);
 
     if (placementsResult.error) throw placementsResult.error;
     if (auditResult.error) throw auditResult.error;
-    for (const r of updateResults) if (r.error) throw r.error;
 
     // spec §10.4: "runs on every solve and on a fifteen-minute cron" — the
     // grid reminders assign against just changed, so re-running it here

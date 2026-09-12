@@ -5,32 +5,10 @@ import { buildGrid } from "@/lib/scheduler/buildGrid";
 import { mergeBySource } from "@/lib/scheduler/grid";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { Badge } from "@/components/ui/Badge";
-import { AddTaskForm } from "@/components/tasks/AddTaskForm";
-import { AddHabitForm } from "@/components/tasks/AddHabitForm";
-import { AddFixedBlockForm } from "@/components/tasks/AddFixedBlockForm";
-import type { MergedPlacement } from "@/lib/scheduler/grid";
+import { WeekToolbar } from "@/components/week/WeekToolbar";
+import { EventCard } from "@/components/week/EventCard";
 
 const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
-/** Spec §14.4 state encoding: solid dark = hard, Ray edge = task, Leaf edge = habit. */
-function placementStyle(p: MergedPlacement) {
-  if (p.state === "hard") {
-    return { container: "rounded-sm bg-ink text-paper px-2 py-1", title: "text-paper", meta: "text-paper/80" };
-  }
-  if (p.sourceType === "habit") {
-    return {
-      container: "border-l-2 border-accent-habit bg-accent-habit/10 pl-2 py-1 rounded-r-sm",
-      title: "text-ink",
-      meta: "text-ink-soft",
-    };
-  }
-  return {
-    container: "border-l-2 border-brand-600 bg-brand-50 pl-2 py-1 rounded-r-sm",
-    title: "text-ink",
-    meta: "text-ink-soft",
-  };
-}
 
 function NotConnected({ children }: { children: React.ReactNode }) {
   return (
@@ -112,6 +90,7 @@ export default async function WeekPage({
   const blocks = await buildGrid(user.id, weekStart.toJSDate(), weekEnd.toJSDate());
   const placements = mergeBySource(blocks).filter((p) => p.state === "hard" || p.state === "soft");
 
+  const today = DateTime.now().setZone(profile.timezone);
   const days = Array.from({ length: 7 }, (_, i) => {
     const day = weekStart.plus({ days: i });
     const dayPlacements = placements
@@ -125,9 +104,9 @@ export default async function WeekPage({
       <PageHeader
         eyebrow="Week"
         title={`Week of ${weekStart.toFormat("LLL d")}`}
-        lead="Solid dark blocks are fixed commitments. Ray-colored blocks are auto-scheduled tasks; green blocks are habit sessions — add either below."
+        lead="Dark blocks are commitments and never move. Orange blocks are tasks and green blocks are habit sessions — the scheduler placed those and will move them as things change. Click anything to see it or delete it."
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <Link
               href={`/week?weekOffset=${Math.max(weekOffset - 1, 0)}`}
               className="h-8 px-3 inline-flex items-center rounded-sm text-xs font-medium border border-line text-ink-soft hover:bg-brand-50"
@@ -144,39 +123,41 @@ export default async function WeekPage({
         }
       />
 
-      <div className="mb-4 flex flex-col gap-4">
-        <AddFixedBlockForm />
-        <AddTaskForm />
-        <AddHabitForm />
+      <div className="mb-6">
+        <WeekToolbar />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         {days.map(({ day, dayPlacements }, i) => (
-          <Panel key={day.toISODate()} className="flex flex-col gap-3">
-            <div>
-              <div className="text-[10px] font-extrabold uppercase tracking-[.07em] text-ink-faint">
-                {DAY_LABELS[i]}
+          <Panel key={day.toISODate()} className={`flex flex-col gap-3 ${day.hasSame(today, "day") ? "border-brand-400" : ""}`}>
+            <div className="flex items-baseline justify-between">
+              <div>
+                <div className={`text-[10px] font-extrabold uppercase tracking-[.07em] ${day.hasSame(today, "day") ? "text-brand-700" : "text-ink-faint"}`}>
+                  {DAY_LABELS[i]}{day.hasSame(today, "day") ? " · today" : ""}
+                </div>
+                <div className="text-sm font-semibold text-ink">{day.toFormat("LLL d")}</div>
               </div>
-              <div className="text-sm font-semibold text-ink">{day.toFormat("LLL d")}</div>
+              {dayPlacements.length > 0 && <span className="font-data text-[11px] text-ink-faint">{dayPlacements.length}</span>}
             </div>
 
             {dayPlacements.length === 0 ? (
-              <p className="text-xs text-ink-faint">Nothing scheduled.</p>
+              <p className="text-xs text-ink-faint">Free.</p>
             ) : (
               <ul className="flex flex-col gap-2">
-                {dayPlacements.map((p) => {
-                  const style = placementStyle(p);
-                  return (
-                  <li key={`${p.sourceId}-${p.start.toISOString()}`} className={style.container}>
-                    <div className={`text-xs font-semibold ${style.title}`}>{p.title}</div>
-                    <div className={`font-data text-[11px] ${style.meta}`}>
-                      {DateTime.fromJSDate(p.start, { zone: profile.timezone }).toFormat("HH:mm")}–
-                      {DateTime.fromJSDate(p.end, { zone: profile.timezone }).toFormat("HH:mm")}
-                    </div>
-                    {p.location && <Badge tone="neutral">{p.location}</Badge>}
+                {dayPlacements.map((p) => (
+                  <li key={`${p.sourceId}-${p.start.toISOString()}`}>
+                    <EventCard
+                      sourceId={p.sourceId}
+                      sourceType={p.sourceType ?? "task"}
+                      title={p.title ?? "Untitled"}
+                      startIso={p.start.toISOString()}
+                      endIso={p.end.toISOString()}
+                      state={p.state === "hard" ? "hard" : "soft"}
+                      location={p.location}
+                      timezone={profile.timezone}
+                    />
                   </li>
-                  );
-                })}
+                ))}
               </ul>
             )}
           </Panel>

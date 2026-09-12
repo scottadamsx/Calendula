@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { runAgentTurn } from "@/lib/agent/chat";
+import { userMessageAnswering } from "@/lib/agent/pendingQuestion";
 
 export interface ChatActionResult {
   ok: boolean;
@@ -20,7 +21,7 @@ async function loadHistory(
     .from("calendula_chat_messages")
     .select("role, content")
     .eq("user_id", userId)
-    .order("created_at", { ascending: true });
+    .order("seq", { ascending: true });
   return (data ?? []).map((r) => ({ role: r.role as "user" | "assistant", content: r.content }));
 }
 
@@ -38,6 +39,7 @@ async function persistMessages(
 
 function revalidateAffectedPages() {
   revalidatePath("/");
+  revalidatePath("/history");
   revalidatePath("/week");
   revalidatePath("/reminders");
   revalidatePath("/checkin");
@@ -63,7 +65,7 @@ export async function sendChatMessage(text: string): Promise<ChatActionResult> {
   if (!profile) return { ok: false, message: "No scheduling profile — sign in again." };
 
   const history = await loadHistory(supabase, user.id);
-  const userMessage: Anthropic.MessageParam = { role: "user", content: [{ type: "text", text }] };
+  const userMessage = userMessageAnswering(history, text);
 
   const newMessages = await runAgentTurn(user.id, profile.timezone, [...history, userMessage]);
   const toPersist = [userMessage, ...newMessages];

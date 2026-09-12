@@ -808,6 +808,128 @@ and all rows written to `calendula_chat_messages` during testing) was
 deleted afterward — none of it was a real user conversation or a real
 commitment.
 
+## Phase 8.1 — the first real day of use (2026-09-12)
+
+Scotty used the shipped app for real, with real commitments, for one
+afternoon. Seven things came out of it — three real bugs, one data-integrity
+bug, two capability gaps, and one interface verdict ("this interface sucks
+… adding stuff should be buttons that bring up modals, bro this is 2026").
+Every item below was reproduced or found live, fixed, and re-verified live.
+
+1. **Chat didn't fit the window.** `ChatInterface` sized itself with a
+   hard-coded `calc(100vh - 160px)`; the real header above it is taller and
+   wraps on narrow screens, so the page itself scrolled (63px on a laptop,
+   ~180px on a phone) and the auto-scroll-to-newest-message scrolled the
+   whole document instead of the transcript. Now measures its own top edge
+   at runtime and fills exactly the rest of `100dvh`, and scrolls only the
+   transcript container. Verified: `document.scrollHeight === innerHeight`
+   at 1440×900, 1280×720, 390×844.
+2. **Typing instead of clicking a multiple-choice option broke the turn.**
+   The API refuses a new user message while the last assistant message has
+   an unanswered `tool_use` — the pause mechanism's own precondition.
+   `userMessageAnswering` (`src/lib/agent/pendingQuestion.ts`, unit-tested)
+   now delivers the typed text *as* the answer: a `tool_result` saying the
+   user replied in text, then the text block, in one user message.
+3. **Recurring fixed blocks ran out of placements and the solver booked
+   work into them.** `syncFixedBlockPlacements` only ever ran on create and
+   from a nightly cron that doesn't exist outside Vercel; "Work" (Mon–Fri)
+   had two placements total, and the solver put the CP4485 report inside
+   9–5. `solve()` now refreshes fixed-block placements for its own horizon
+   before every real (non-dry-run) solve — the grid it places against is
+   the calendar as it stands. The cron route now calls `solve()` instead of
+   a bare sync, because a bare sync can land a new hard placement on top of
+   an already-scheduled soft one and trip the grid invariant on the next
+   page load. Verified: 10 future Work placements, zero soft placements
+   overlapping them, `/week` renders.
+4. **The agent could only create.** "actually you delete them" → "I can't."
+   Added `list_calendar_items` (ids + summaries of tasks, habits, fixed
+   blocks, pending reminders) and `delete_calendar_item`, backed by a new
+   `deleteCalendarItem` server action (placements first, then the row, then
+   a re-solve). Edit is delete-then-recreate, stated in the tool description
+   and system prompt. **Second finding on top of it:** with the new tools
+   wired and proven by a clean-history probe, the live agent still said
+   "I *still* can't" — anchoring on its own earlier claim in the transcript.
+   The system prompt now states that the current tool list is the
+   authority and earlier "I can't" statements are outdated. Re-verified
+   live in the same poisoned transcript: listed, deleted, confirmed, and
+   volunteered to re-shape the conflicting Work block itself.
+5. **Transcript order was nondeterministic.** Every row a turn persists is
+   inserted in one statement, so they share one `created_at`; ordering by
+   it alone let Postgres return a turn's rows in any order, and one flip
+   made the whole conversation unreplayable (`tool_result` without its
+   `tool_use` in the previous message — every subsequent send 400'd).
+   Migration `20260912000000_chat_messages_seq.sql` adds `seq bigserial`;
+   every read orders by it. Backfilled the 14 live rows in an order first
+   validated as replayable, not blindly.
+6. **History page** (`/history`, nav entry after Chat): every message, every
+   tool call the agent made and what it reported back — Added / Refused /
+   Deleted / Looked badges — grouped by day, newest first. Derived entirely
+   from `calendula_chat_messages` at read time; no second write path to
+   drift.
+7. **Week and Reminders redone around modals.** Inline add-forms are gone
+   from both pages; `+ Commitment / + Task / + Habit` (Week) and
+   `+ Reminder` (Reminders) open a native `<dialog>`-based `Modal`
+   (`src/components/ui/Modal.tsx`: house-style modal elevation, backdrop
+   `rgba(ink,.5)` + blur, bottom sheet under 620px, Escape/backdrop close,
+   children unmount on close so forms open fresh). Forms are vertical,
+   `Field`-based, and close themselves on success with the result shown as
+   a dismissible notice. **Every event on Week is now clickable** →
+   details sheet with a Delete button (same `deleteCalendarItem` the chat
+   uses), with an honest warning per kind (a commitment deletes every
+   repeat; a habit deletes every session — there is still no "skip one
+   occurrence," the EXDATE gap noted earlier). Holds and meetings show
+   where they're managed instead of a delete button. Verified with
+   Playwright: modals open/close, delete removes the row and the card, no
+   page errors, mobile sheet renders.
+
+8. **Tasks silently vanished on the next solve — a Phase 2 model error,
+   not a new bug.** Phase 2's "fix" wrote `remaining_minutes = 0` when a
+   task was *placed*. Every solve deletes soft placements outside the
+   freeze window and only re-places tasks with minutes remaining, so any
+   later solve (adding anything triggers one) wiped a placed task
+   permanently: the real "Write CP4485 report" had remaining 0, no
+   placements, no completions. The model is now: `remaining_minutes` is
+   work not yet *done*. `solve()` subtracts only the frozen chunks that
+   survived the delete and places the rest, never writing the balance;
+   the check-in is the only consumer (a completed chunk subtracts its
+   planned minutes; a skipped one subtracts nothing, so it just gets
+   re-placed). Phase 2's original double-placement was the frozen-chunk
+   case, which the subtraction handles. Verified: three consecutive solves,
+   120 placed / 120 remaining each time. Repaired the one live task that
+   was still in the future; two past-deadline zeroed tasks left alone.
+9. **The scenario suite caught the agent doing damage.** Given delete
+   tools, it went back to an earlier hanging "actually you delete them"
+   and deleted the real Work block unasked (scenario 2); a loosely worded
+   "delete the TEST Lab" then took out a non-TEST "Lab" by fuzzy match
+   (scenario 9); it also dropped the user's "TEST" prefix from titles it
+   created, which is why cleanup missed a habit and a reminder. Work was
+   restored exactly as it was. System prompt gained three rules: only
+   delete what the current message asks for and never act on a hanging
+   earlier request without asking; when a delete's name doesn't match
+   exactly or matches several, ask; use the user's own wording for titles.
+   Suite tally, honestly: 5 of 9 passed on behavior; the four failures
+   were these guardrail gaps plus the suite's own TEST-prefix assumption.
+10. **Chat output rendered like Claude's, not like a terminal.** Assistant
+    turns are un-bubbled prose with the Calendula mark, 15px/1.75 Inter,
+    real markdown via `react-markdown` (bold, lists, inline code, links; no
+    raw HTML) with house-style components; user turns are a Ray-tinted
+    bubble; tool calls are quiet dot-and-label rows grouped into the turn;
+    the composer auto-grows with Send inside. The prompt asks for light
+    markdown, a human first-person voice, and no em dashes; the renderer
+    still catches stray asterisks and em dashes (`, ` instead) if the model
+    slips. Verified: 14 `<strong>`, 6 `<li>`, zero raw `**`, zero em dashes
+    on a real reply.
+
+Chat-agent scenario suite (scratch, not committed — it drives the real
+chat with TEST-prefixed items and cleans up after): recurring Tue/Thu
+commitment, solver-placed task, conflict-with-Work refusal that offers a
+next step, ask-then-type-instead, read-back, suggestion-without-writes,
+edit-via-delete-and-recreate, two deletes in one message, reminder + habit
+in one message. Never run two solves-or-chats concurrently against the
+same account: a read during another script's delete-and-rebuild window
+returns a half-built calendar and the transcript will faithfully describe
+it.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
@@ -841,13 +963,13 @@ The SPEC-GAP-RETRO audit: enumerate every design decision made during implementa
 that isn't in the spec. For each, say what was decided, where in the code, and why it
 wasn't escalated. An empty list is a claim — it will be spot-checked against the diff.
 
-## SPEC-GAP-RETRO audit (as of the Phase 7 drop, 2026-09-12)
+## SPEC-GAP-RETRO audit (as of Phase 8.1, 2026-09-12)
 
 Every implementation decision made across this build that the spec doesn't
 literally spell out, in build order. Each entry: what was decided, where,
 why it wasn't escalated as a blocking `SPEC-GAP`. Full reasoning for each
 lives in that phase's own section above — this is the index, not a
-replacement. 61 entries; treat that count, not "zero," as the honest
+replacement. 71 entries; treat that count, not "zero," as the honest
 baseline for a project this size, and spot-check a sample against the diff
 rather than taking the list on faith.
 
@@ -1112,6 +1234,43 @@ this audit that removes built code rather than adding or interpreting):**
     and `/status`'s "Upcoming" panel were all removed rather than left as
     dormant promises. The Phase 1 stale-placement fix it surfaced stays.
     Phase 7 section.
+
+**Phase 8.1 — one afternoon of real use, none of it in the spec:**
+62. `solve()` syncs fixed-block placements before every real solve, and the
+    sync cron calls `solve()` rather than a bare sync — the spec's
+    ingestion-time expansion (entry 16) assumed a cron that runs; outside
+    Vercel it never does. Phase 8.1 §3, `solve.ts`, `sync-fixed-blocks/route.ts`.
+63. Typed text while a multiple-choice question is pending is delivered as
+    that question's `tool_result` plus the text — the API's own replay rule,
+    not a product decision. Phase 8.1 §2, `pendingQuestion.ts`.
+64. `delete_calendar_item` / `list_calendar_items` tools and the
+    `deleteCalendarItem` action; edit = delete + recreate, stated rather
+    than hidden behind an update tool that doesn't exist. Phase 8.1 §4.
+65. System prompt asserts the current tool list over the model's own
+    earlier "I can't" — a real transcript-anchoring failure reproduced
+    live, not a hypothetical. Phase 8.1 §4, `chat.ts`.
+66. `calendula_chat_messages.seq` (`20260912000000_chat_messages_seq.sql`)
+    — replay order must be exact and `created_at` ties within a turn made
+    it a coin flip. The second real missing-column migration in the
+    project (after `demotion_offered`, entry 17). Phase 8.1 §5.
+67. `/history` page, derived from the transcript at read time. Phase 8.1 §6.
+68. Modal-based add flows and click-to-delete on Week/Reminders — a
+    direct interface verdict from the user, implemented inside the house
+    style's own modal elevation level rather than a new pattern. The
+    `Modal` and `Field` components are the first additions to `ui/` since
+    Phase 0. Phase 8.1 §7.
+69. `remaining_minutes` means not-yet-done, never not-yet-placed; solve
+    subtracts frozen chunks and never writes the balance, check-in is the
+    only consumer. Reverses Phase 2's entry 35 fix, which had the model
+    backwards. Phase 8.1 §8, `solve.ts`, `completions.ts`.
+70. Agent guardrails in the system prompt: no destructive action the
+    current message didn't ask for, ask on inexact or multiple delete
+    matches, keep the user's own titles verbatim. Each one is a failure
+    the scenario suite produced against real data. Phase 8.1 §9.
+71. `react-markdown` (no raw HTML) for assistant prose, the second runtime
+    dependency added after `@anthropic-ai/sdk`; the model is asked for
+    light markdown rather than none because rendered structure reads
+    better than flattened text. Phase 8.1 §10.
 
 ## Cadence
 

@@ -6,6 +6,7 @@ import { CalendulaMark } from "@/components/brand/CalendulaMark";
 
 const NAV = [
   { href: "/", label: "Chat" },
+  { href: "/history", label: "History" },
   { href: "/week", label: "Week" },
   { href: "/meetings", label: "Meetings" },
   { href: "/reminders", label: "Reminders" },

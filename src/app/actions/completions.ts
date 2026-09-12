@@ -54,27 +54,27 @@ export async function logCompletion(
   });
   if (insertError) return { ok: false, message: insertError.message };
 
-  if (!completed && placement.source_type === "task") {
-    // "Incomplete tasks return their remaining minutes to
-    // tasks.remaining_minutes and trigger a re-solve" — this placement's
-    // chunk didn't happen, so it goes back into the pool to be rescheduled.
-    // "Skipped placements increment tasks.skip_count" — habits have no such
-    // column (spec §5.4), so this only applies to tasks.
+  if (placement.source_type === "task") {
+    // remaining_minutes is work not yet done. A completed chunk consumes its
+    // planned minutes (actual minutes feed calibration, not the balance); a
+    // skipped chunk consumes nothing, so the minutes are still in the pool
+    // and the re-solve below simply finds them a new slot. "Skipped
+    // placements increment tasks.skip_count" — habits have no such column.
     const { data: task } = await supabase
       .from("calendula_tasks")
-      .select("remaining_minutes, estimated_minutes, skip_count")
+      .select("remaining_minutes, skip_count")
       .eq("id", placement.source_id)
       .single();
     if (task) {
-      const restoredMinutes = Math.min(task.estimated_minutes, task.remaining_minutes + plannedMinutes);
-      const { error: updateError } = await supabase
-        .from("calendula_tasks")
-        .update({ remaining_minutes: restoredMinutes, skip_count: task.skip_count + 1 })
-        .eq("id", placement.source_id);
+      const update = completed
+        ? { remaining_minutes: Math.max(0, task.remaining_minutes - plannedMinutes) }
+        : { skip_count: task.skip_count + 1 };
+      const { error: updateError } = await supabase.from("calendula_tasks").update(update).eq("id", placement.source_id);
       if (updateError) return { ok: false, message: updateError.message };
     }
-    await requestSolve(user.id, "completion_skipped", supabase);
-  } else if (completed && placement.source_type === "task") {
+    await requestSolve(user.id, completed ? "completion_done" : "completion_skipped", supabase);
+  }
+  if (completed && placement.source_type === "task") {
     // spec §10.7: a task-at-risk derived reminder is about urgency that a
     // completed session has, at minimum, made progress against — cascade
     // it the same as any other resolved parent record.

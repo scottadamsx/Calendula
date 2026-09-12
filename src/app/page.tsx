@@ -63,7 +63,7 @@ export default async function ChatPage() {
     .from("calendula_chat_messages")
     .select("role, content")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: true });
+    .order("seq", { ascending: true });
 
   const initialMessages: StoredMessage[] = (rows ?? []).map((r) => ({
     role: r.role as "user" | "assistant",

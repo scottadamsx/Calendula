@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { activeUsers } from "@/lib/scheduler/activeUsers";
-import { syncFixedBlockPlacements } from "@/lib/scheduler/fixedBlocks";
+import { solve } from "@/lib/scheduler/solve";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 
 /**
@@ -28,15 +28,12 @@ export async function GET(request: NextRequest) {
 
   for (const { userId } of users) {
     try {
-      const { data: profile } = await supabase
-        .from("calendula_scheduling_profile")
-        .select("horizon_days")
-        .eq("user_id", userId)
-        .single();
-      const horizonDays = profile?.horizon_days ?? 14;
-      const horizonEnd = new Date(now.getTime() + horizonDays * 24 * 60 * 60_000);
-      const { synced } = await syncFixedBlockPlacements(userId, now, horizonEnd);
-      results.push({ userId, synced });
+      // solve() syncs fixed-block placements itself before placing anything,
+      // and then re-solves soft work around them — a bare sync could land a
+      // new hard placement on top of an already-scheduled soft one and trip
+      // the grid invariant on the next page load.
+      const result = await solve(userId, { trigger: "cron_fixed_block_sync" }, supabase);
+      results.push({ userId, synced: result.placements.length });
     } catch (err) {
       results.push({ userId, error: err instanceof Error ? err.message : "Unknown error" });
     }
