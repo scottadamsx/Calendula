@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { WeekToolbar } from "@/components/week/WeekToolbar";
 import { EventCard } from "@/components/week/EventCard";
+import { WeekGrid, type GridDay } from "@/components/week/WeekGrid";
 
 const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -99,12 +100,27 @@ export default async function WeekPage({
     return { day, dayPlacements };
   });
 
+  const gridDays: GridDay[] = days.map(({ day, dayPlacements }, i) => ({
+    dateIso: day.toISODate()!,
+    label: `${DAY_LABELS[i].slice(0, 3)} ${day.toFormat("LLL d")}`,
+    isToday: day.hasSame(today, "day"),
+    events: dayPlacements.map((p) => ({
+      sourceId: p.sourceId,
+      sourceType: p.sourceType ?? "task",
+      title: p.title ?? "Untitled",
+      startIso: p.start.toISOString(),
+      endIso: p.end.toISOString(),
+      state: p.state === "hard" ? ("hard" as const) : ("soft" as const),
+      location: p.location,
+    })),
+  }));
+
   return (
     <>
       <PageHeader
         eyebrow="Week"
         title={`Week of ${weekStart.toFormat("LLL d")}`}
-        lead="Dark blocks are commitments and never move. Orange blocks are tasks and green blocks are habit sessions — the scheduler placed those and will move them as things change. Click anything to see it or delete it."
+        lead="Dark is a commitment and never moves. Orange is a task, green is a habit session: the scheduler placed those and will move them as things change. Empty space is genuinely free. Click anything to see it or delete it."
         action={
           <div className="flex gap-2 shrink-0">
             <Link
@@ -127,7 +143,11 @@ export default async function WeekPage({
         <WeekToolbar />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+      <div className="hidden md:block">
+        <WeekGrid days={gridDays} timezone={profile.timezone} />
+      </div>
+
+      <div className="md:hidden grid grid-cols-1 gap-4">
         {days.map(({ day, dayPlacements }, i) => (
           <Panel key={day.toISODate()} className={`flex flex-col gap-3 ${day.hasSame(today, "day") ? "border-brand-400" : ""}`}>
             <div className="flex items-baseline justify-between">

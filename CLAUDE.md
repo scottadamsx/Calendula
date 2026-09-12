@@ -930,6 +930,93 @@ same account: a read during another script's delete-and-rebuild window
 returns a half-built calendar and the transcript will faithfully describe
 it.
 
+## Phase 8.2 — "make it way better" (2026-09-12, evening)
+
+Driven by three things Scotty said after his own testing: the Week view
+"doesn't show much," "how do I know this is better than any calendar,"
+and "look at the most recent chat logs and make it way better." Also:
+one thing the logs showed that I had gotten wrong earlier in the day.
+
+**From the chat logs.** Reading the transcript end to end (44 rows):
+1. At 17:25 Scotty *chose* "Delete the Work block, then add the lab" via
+   the agent's own buttons. Work is gone by his decision; my earlier
+   restore (Phase 8.1 §9) was of a deletion the *suite* caused, not this
+   one. Left alone.
+2. The dentist appointment reported "11 occurrences placed" for a
+   one-off. `createFixedBlock` was reporting the sync's total across all
+   blocks. The agent, trusting the number, offered to delete and redo a
+   correct entry. Now counts only the new block's own occurrences and
+   names the first one.
+3. "Haircut ... placed somewhere before the end of next week": the tool
+   result never said *when*. `createTask`/`createHabit` (and update) now
+   return the actual landing times via `describePlacements`, and the
+   prompt forbids "somewhere" when the real time is known.
+4. "you should be able to change that": no edit existed, only
+   delete-and-recreate. Added `update_calendar_item` backed by
+   `updateCalendarItem` (`src/app/actions/updateItems.ts`): in-place edits
+   for all four kinds, fixed blocks re-checked for overlaps through a
+   shared `describeFixedBlockConflict` (`src/lib/scheduler/
+   fixedBlockConflict.ts`, now also what `createFixedBlock` uses), and
+   anything grid-affecting re-solved. Create results carry the new row's
+   `id` so a follow-up edit doesn't need a lookup; the first live update
+   attempt guessed an id (the overlap guard caught it), which is what
+   prompted that.
+5. `get_week_overview` now returns free time per day (merged free runs of
+   30+ minutes) so "what should I do Wednesday evening" is grounded in
+   real gaps.
+6. Prompt: trust tool results over expectations; never guess ids; prefer
+   update over delete-and-recreate.
+Live-verified through the chat with TEST items: create with exact time,
+update in place, task with exact landing, two deletes in one message.
+
+**Week is a real time grid** (`src/components/week/WeekGrid.tsx`): hours
+down the side, seven columns, blocks sized to duration, today shaded with
+a live now-line, range 6:00 to midnight stretched only if something sits
+outside it. Free time is visible as empty space, which is the point. Every
+block is the same `EventCard` (details sheet + Delete) in a `grid` layout.
+Under `md` the day list stays; a seven-column grid on a phone is unreadable.
+
+**"How do I know it's better": the Audit page and the benchmark.** Google
+and Apple Calendar don't schedule, so there's no like-for-like; the
+measurable claim is that the *auto-scheduling* holds up.
+- `src/lib/audit/scheduleAudit.ts` (pure, tested): six invariants that
+  must hold on every week (no overlaps; scheduled work never on a
+  commitment; nothing during sleep; every scheduled task ends before its
+  deadline; habit spacing respected; daily task cap respected) plus
+  metrics (task hours, habit adherence, free hours, largest gap per day,
+  per-task slack and chunk count, share of task time in good-energy
+  blocks). `/audit` runs it on the real week you're looking at; any red
+  line is a solver bug, not a preference.
+- `src/lib/audit/benchmark.ts` (pure, seeded PRNG, reproducible):
+  generates randomized weeks (commitments, appointments, energy windows,
+  4–8 tasks with deadlines) and runs three schedulers on identical
+  inputs: Calendula's `solveCore`, "first fit" (earliest gap wins, what a
+  person does by hand), and "deadline greedy" (same, sorted by due date).
+  `npm run benchmark` writes `benchmark-results.json` (committed, shown on
+  `/audit`); `benchmark.test.ts` pins it in CI: Calendula must hold all
+  six invariants on 100% of weeks and meet at least as many deadlines and
+  respect the daily cap at least as often as first-fit.
+The baselines respect commitments and sleep too, so what the table
+measures is ordering and judgment (deadline awareness, daily cap, energy
+alignment, slack), not the trivial win of avoiding a meeting.
+
+First real run, 300 weeks, seed 42 (`benchmark-results.json`):
+
+| Scheduler | Rules held | Deadlines met | Avg slack | Chunks/task | Good-energy | Cap respected | Unplaced |
+|---|---|---|---|---|---|---|---|
+| Calendula | 100% | 98.4% | 25.6h | 1.5 | 68.7% | 100% | 1.3% |
+| First fit | 0% | 97.3% | 78.4h | 1.38 | 22.3% | 0% | 0% |
+| Deadline greedy | 0% | 99.9% | 76.0h | 1.37 | 22.3% | 0% | 0% |
+
+Read honestly, and the page says so: the naive schedulers win on slack
+and unplaced minutes *because* they have no daily cap and cram every task
+into the earliest hours. Calendula's 1.6% deadline misses are all weeks
+where honoring the 240-minute cap left work over; it reports those as
+unplaceable rather than breaking the cap (D7). The wins that matter are
+the ones a person can't do by hand: every rule on every week, the cap,
+and three times the task time in good-energy hours. If the cap is ever
+made soft, this table is where the tradeoff shows up first.
+
 ## Cross-cutting additions (not tied to a spec phase)
 
 - **QA tracker** (`qa-status.json`, `src/lib/qa/`, `src/app/actions/qa.ts`,
@@ -963,13 +1050,13 @@ The SPEC-GAP-RETRO audit: enumerate every design decision made during implementa
 that isn't in the spec. For each, say what was decided, where in the code, and why it
 wasn't escalated. An empty list is a claim — it will be spot-checked against the diff.
 
-## SPEC-GAP-RETRO audit (as of Phase 8.1, 2026-09-12)
+## SPEC-GAP-RETRO audit (as of Phase 8.2, 2026-09-12)
 
 Every implementation decision made across this build that the spec doesn't
 literally spell out, in build order. Each entry: what was decided, where,
 why it wasn't escalated as a blocking `SPEC-GAP`. Full reasoning for each
 lives in that phase's own section above — this is the index, not a
-replacement. 71 entries; treat that count, not "zero," as the honest
+replacement. 76 entries; treat that count, not "zero," as the honest
 baseline for a project this size, and spot-check a sample against the diff
 rather than taking the list on faith.
 
@@ -1271,6 +1358,23 @@ this audit that removes built code rather than adding or interpreting):**
     dependency added after `@anthropic-ai/sdk`; the model is asked for
     light markdown rather than none because rendered structure reads
     better than flattened text. Phase 8.1 §10.
+
+**Phase 8.2 — the "make it way better" pass:**
+72. `update_calendar_item` and the shared overlap guard
+    (`fixedBlockConflict.ts`) — an in-place edit path the spec never
+    describes; create results now carry ids. Phase 8.2 §4.
+73. Tool results describe *when* work landed (`describePlacements`) and
+    the week overview includes free runs per day — the agent's honesty
+    depends on tools telling it real times, not on prompt wording alone.
+    Phase 8.2 §3, §5.
+74. Time-grid Week view, list retained under `md` — spec §14 describes
+    state encoding, not the grid form itself. Phase 8.2.
+75. Six-invariant schedule audit as a first-class page, not a test-only
+    concern — any red line is a solver bug by definition. Phase 8.2.
+76. Reproducible benchmark against two naive schedulers, results
+    committed and pinned by a test — the project's answer to "is it
+    actually good," since no external calendar auto-schedules to compare
+    against. Phase 8.2.
 
 ## Cadence
 

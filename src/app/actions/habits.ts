@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requestSolve } from "@/lib/scheduler/dispatch";
+import { describePlacements } from "@/lib/scheduler/describePlacements";
 
 export interface CreateHabitResult {
   ok: boolean;
   message: string;
+  id?: string;
 }
 
 export async function createHabit(
@@ -55,13 +57,17 @@ export async function createHabit(
   const result = await requestSolve(user.id, "habit_created");
   revalidatePath("/week");
 
+  const { data: profile } = await supabase.from("calendula_scheduling_profile").select("timezone").eq("user_id", user.id).single();
+  const when = describePlacements(result.placements, "habit", inserted.id, profile?.timezone ?? "UTC", 7);
+
   const shortfall = result.habitShortfall.find((s) => s.habitId === inserted.id && s.missing > 0);
   if (shortfall) {
     return {
       ok: true,
-      message: `"${title}" added — this week's schedule couldn't fit ${shortfall.missing} of its sessions.`,
+      id: inserted.id,
+      message: `"${title}" added. Sessions so far: ${when}. This week couldn't fit ${shortfall.missing} of them.`,
     };
   }
 
-  return { ok: true, message: `"${title}" added and scheduled.` };
+  return { ok: true, id: inserted.id, message: `"${title}" added. Sessions this week: ${when}.` };
 }

@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requestSolve } from "@/lib/scheduler/dispatch";
+import { describePlacements } from "@/lib/scheduler/describePlacements";
 
 export interface CreateTaskResult {
   ok: boolean;
   message: string;
+  id?: string;
 }
 
 /**
@@ -60,20 +62,25 @@ export async function createTask(
   const result = await requestSolve(user.id, "task_created");
   revalidatePath("/week");
 
+  const { data: profile } = await supabase.from("calendula_scheduling_profile").select("timezone").eq("user_id", user.id).single();
+  const when = describePlacements(result.placements, "task", inserted.id, profile?.timezone ?? "UTC");
+
   const failed = result.unplaceable.find((u) => u.taskId === inserted.id);
   if (failed) {
     const placedMinutes = estimatedMinutes - failed.remainingMinutes;
     if (placedMinutes > 0) {
       return {
         ok: true,
-        message: `"${title}" added — scheduled ${placedMinutes} of ${estimatedMinutes} minutes; the remaining ${failed.remainingMinutes} couldn't fit before the deadline.`,
+        id: inserted.id,
+        message: `"${title}" added. Scheduled ${placedMinutes} of ${estimatedMinutes} minutes (${when}); the remaining ${failed.remainingMinutes} couldn't fit before the deadline.`,
       };
     }
     return {
       ok: true,
+      id: inserted.id,
       message: `"${title}" added, but there wasn't room for any of it before its deadline — it's unplaceable, not overlapping anything.`,
     };
   }
 
-  return { ok: true, message: `"${title}" added and scheduled.` };
+  return { ok: true, id: inserted.id, message: `"${title}" added and scheduled: ${when}.` };
 }

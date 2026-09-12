@@ -26,6 +26,7 @@ const TOOL_LABELS: Record<string, { label: string; tone: string }> = {
   create_reminder: { label: "Added a reminder", tone: "bg-accent-reminder" },
   get_week_overview: { label: "Checked the week", tone: "bg-ink-faint" },
   list_calendar_items: { label: "Looked up the calendar", tone: "bg-ink-faint" },
+  update_calendar_item: { label: "Updated", tone: "bg-brand-400" },
   delete_calendar_item: { label: "Deleted", tone: "bg-danger" },
 };
 

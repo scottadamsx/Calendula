@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export interface CreateReminderResult {
   ok: boolean;
   message: string;
+  id?: string;
 }
 
 /**
@@ -84,10 +85,10 @@ export async function createReminder(
 
   if (kind === "latent") {
     // latent reminders never consume attention budget (§10.1) — nothing to assign.
-    return { ok: true, message: `"${title}" saved — it'll surface when it's relevant.` };
+    return { ok: true, id: inserted.id, message: `"${title}" saved. It'll surface when it's relevant.` };
   }
 
-  return { ok: true, message: `"${title}" added — it'll be assigned a moment to surface on the next scheduling pass.` };
+  return { ok: true, id: inserted.id, message: `"${title}" added. It'll be assigned a moment to surface on the next scheduling pass.` };
 }
 
 export type ReminderOutcome = "acknowledged" | "deferred" | "done" | "dismissed";

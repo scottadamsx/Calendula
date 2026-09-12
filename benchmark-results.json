@@ -1,0 +1,37 @@
+{
+  "ranAt": "2026-09-12T18:23:59.312Z",
+  "weeks": 300,
+  "seed": 42,
+  "schedulers": [
+    {
+      "name": "Calendula",
+      "invariantPassRate": 100,
+      "deadlinesMetRate": 98.4,
+      "avgSlackHours": 25.6,
+      "avgChunksPerTask": 1.5,
+      "goodEnergyRate": 68.7,
+      "dailyCapRate": 100,
+      "unplacedMinutesRate": 1.3
+    },
+    {
+      "name": "First fit",
+      "invariantPassRate": 0,
+      "deadlinesMetRate": 97.3,
+      "avgSlackHours": 78.4,
+      "avgChunksPerTask": 1.38,
+      "goodEnergyRate": 22.3,
+      "dailyCapRate": 0,
+      "unplacedMinutesRate": 0
+    },
+    {
+      "name": "Deadline greedy",
+      "invariantPassRate": 0,
+      "deadlinesMetRate": 99.9,
+      "avgSlackHours": 76,
+      "avgChunksPerTask": 1.37,
+      "goodEnergyRate": 22.3,
+      "dailyCapRate": 0,
+      "unplacedMinutesRate": 0
+    }
+  ]
+}

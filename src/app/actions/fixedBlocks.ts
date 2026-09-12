@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { DateTime } from "luxon";
 import { createClient } from "@/lib/supabase/server";
-import { syncFixedBlockPlacements, expandFixedBlock, findFixedBlockConflict, type FixedBlockOccurrence } from "@/lib/scheduler/fixedBlocks";
+import { syncFixedBlockPlacements, expandFixedBlock } from "@/lib/scheduler/fixedBlocks";
+import { describeFixedBlockConflict } from "@/lib/scheduler/fixedBlockConflict";
 import { requestSolve } from "@/lib/scheduler/dispatch";
 
 export interface CreateFixedBlockResult {
   ok: boolean;
   message: string;
+  id?: string;
 }
 
 const WEEKDAY_CODES = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
@@ -63,61 +65,36 @@ export async function createFixedBlock(
   // Reject an overlap at creation time rather than letting two genuinely-
   // conflicting hard commitments both reach `placements` — the grid engine's
   // "two placements can't claim the same block" invariant exists to catch
-  // solver bugs, not to gracefully handle this, and hitting it live crashes
-  // the whole page instead of asking for a different time. Checks against
-  // the far horizon (not just horizon_days) since a weekly-recurring block
-  // can land inside a one-off block (e.g. a vacation) many weeks out.
-  const checkFrom = new Date();
-  const checkTo = new Date(checkFrom.getTime() + profile.far_horizon_days * 24 * 60 * 60_000);
+  // solver bugs, not to gracefully handle this, and hitting it live crashed
+  // the whole page instead of asking for a different time.
+  const conflictMessage = await describeFixedBlockConflict(supabase, user.id, profile, { startsAt, endsAt, rrule });
+  if (conflictMessage) return { ok: false, message: conflictMessage };
 
-  const { data: existingBlocks, error: existingError } = await supabase
+  const { data: inserted, error: insertError } = await supabase
     .from("calendula_fixed_blocks")
-    .select("id, title, starts_at, ends_at, rrule")
-    .eq("user_id", user.id);
-  if (existingError) return { ok: false, message: existingError.message };
-
-  const existingOccurrences: FixedBlockOccurrence[] = (existingBlocks ?? []).flatMap((b) =>
-    expandFixedBlock(
-      { id: b.id, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), rrule: b.rrule },
-      profile.timezone,
-      checkFrom,
-      checkTo,
-    ).map((occurrence) => ({ title: b.title, start: occurrence.start, end: occurrence.end })),
-  );
-
-  const candidateOccurrences = expandFixedBlock(
-    { id: "candidate", startsAt, endsAt, rrule },
-    profile.timezone,
-    checkFrom,
-    checkTo,
-  );
-
-  const conflict = findFixedBlockConflict(candidateOccurrences, existingOccurrences);
-  if (conflict) {
-    const conflictTime = DateTime.fromJSDate(conflict.start, { zone: profile.timezone }).toFormat("ccc LLL d, h:mma");
-    return {
-      ok: false,
-      message: `That overlaps "${conflict.title}" (${conflictTime}${repeats ? " — and every week it repeats" : ""}) — pick a different time.`,
-    };
-  }
-
-  const { error: insertError } = await supabase.from("calendula_fixed_blocks").insert({
-    user_id: user.id,
-    title,
-    starts_at: startsAt.toISOString(),
-    ends_at: endsAt.toISOString(),
-    location,
-    rrule,
-    source: "manual",
-  });
-  if (insertError) return { ok: false, message: insertError.message };
+    .insert({
+      user_id: user.id,
+      title,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      location,
+      rrule,
+      source: "manual",
+    })
+    .select("id")
+    .single();
+  if (insertError || !inserted) return { ok: false, message: insertError?.message ?? "Could not create the commitment." };
 
   // On-create trigger for the sync cron — see CLAUDE.md's resolved SPEC-GAP.
   // Same underlying function the cron calls per-user; here it runs once for
   // just this session's own user.id so a newly added block doesn't wait for
   // the next scheduled tick.
   const horizonEnd = new Date(Date.now() + profile.horizon_days * 24 * 60 * 60_000);
-  const { synced } = await syncFixedBlockPlacements(user.id, new Date(), horizonEnd);
+  await syncFixedBlockPlacements(user.id, new Date(), horizonEnd);
+  // Count this block's own occurrences — the sync total covers every block
+  // and once reported "11 occurrences" for a one-off dentist appointment.
+  const own = expandFixedBlock({ id: "new", startsAt, endsAt, rrule }, profile.timezone, new Date(), horizonEnd);
+  const first = own[0] ? DateTime.fromJSDate(own[0].start, { zone: profile.timezone }).toFormat("ccc LLL d, h:mma") : null;
 
   // A real bug found live: syncing only ever wrote *this* block's own hard
   // placement — it never gave the solver a chance to move an
@@ -131,6 +108,9 @@ export async function createFixedBlock(
 
   return {
     ok: true,
-    message: `"${title}" added${repeats ? ` (repeats weekly on ${repeatsOnDays.join(", ")})` : ""} — ${synced} occurrence${synced === 1 ? "" : "s"} placed on the calendar.`,
+    id: inserted.id,
+    message: repeats
+      ? `"${title}" added, repeating weekly on ${repeatsOnDays.join(", ")}: ${own.length} occurrence${own.length === 1 ? "" : "s"} in the next ${profile.horizon_days} days${first ? `, first one ${first}` : ""}.`
+      : `"${title}" added${first ? `: ${first}` : ""}.`,
   };
 }

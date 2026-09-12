@@ -16,6 +16,7 @@ const ACTION_LABELS: Record<string, string> = {
   get_week_overview: "Looked at the week",
   list_calendar_items: "Listed the calendar",
   delete_calendar_item: "Deleted",
+  update_calendar_item: "Updated",
 };
 
 const READ_ONLY = new Set(["get_week_overview", "list_calendar_items"]);
@@ -166,7 +167,7 @@ export default async function HistoryPage() {
   const zone = profile?.timezone ?? "UTC";
   const turns = buildTurns((rows ?? []) as Row[], zone).reverse();
 
-  const added = turns.flatMap((t) => t.actions).filter((a) => a.ok === true && !READ_ONLY.has(a.name) && a.name !== "delete_calendar_item").length;
+  const added = turns.flatMap((t) => t.actions).filter((a) => a.ok === true && !READ_ONLY.has(a.name) && a.name !== "delete_calendar_item" && a.name !== "update_calendar_item").length;
   const refused = turns.flatMap((t) => t.actions).filter((a) => a.ok === false).length;
 
   const byDay = new Map<string, Turn[]>();
@@ -217,11 +218,11 @@ export default async function HistoryPage() {
                       ))}
                       {t.actions.map((a, j) => (
                         <li key={`a${j}`} className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge tone={a.ok === false ? "danger" : READ_ONLY.has(a.name) ? "neutral" : a.name === "delete_calendar_item" ? "warn" : a.ok === true ? "success" : "neutral"}>
-                            {a.ok === false ? "Refused" : READ_ONLY.has(a.name) ? "Looked" : a.name === "delete_calendar_item" ? "Deleted" : a.ok === true ? "Added" : "Pending"}
+                          <Badge tone={a.ok === false ? "danger" : READ_ONLY.has(a.name) ? "neutral" : a.name === "delete_calendar_item" ? "warn" : a.name === "update_calendar_item" ? "info" : a.ok === true ? "success" : "neutral"}>
+                            {a.ok === false ? "Refused" : READ_ONLY.has(a.name) ? "Looked" : a.name === "delete_calendar_item" ? "Deleted" : a.name === "update_calendar_item" ? "Updated" : a.ok === true ? "Added" : "Pending"}
                           </Badge>
                           <span className="text-ink font-medium">
-                            {READ_ONLY.has(a.name) || a.name === "delete_calendar_item" ? ACTION_LABELS[a.name] : `${ACTION_LABELS[a.name] ?? a.name}: ${a.title}`}
+                            {READ_ONLY.has(a.name) || a.name === "delete_calendar_item" || a.name === "update_calendar_item" ? ACTION_LABELS[a.name] : `${ACTION_LABELS[a.name] ?? a.name}: ${a.title}`}
                           </span>
                           {a.detail && <span className="text-ink-soft">— {a.detail}</span>}
                         </li>

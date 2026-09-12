@@ -17,6 +17,7 @@ export interface EventCardProps {
   state: "hard" | "soft";
   location?: string;
   timezone: string;
+  layout?: "list" | "grid";
 }
 
 const KIND: Record<string, { label: string; deletable: DeletableKind | null; warning: string }> = {
@@ -61,9 +62,14 @@ export function EventCard(p: EventCardProps) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={`w-full text-left transition-colors duration-150 ${style.container}`}>
-        <div className={`text-xs font-semibold leading-snug ${style.title}`}>{p.title}</div>
-        <div className={`font-data text-[11px] ${style.meta}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={`${p.title}, ${start.toFormat("h:mm")}–${end.toFormat("h:mm a")}`}
+        className={`w-full text-left transition-colors duration-150 ${style.container} ${p.layout === "grid" ? "h-full overflow-hidden !py-1 !px-2 flex flex-col" : ""}`}
+      >
+        <div className={`text-xs font-semibold leading-snug ${style.title} ${p.layout === "grid" ? "truncate" : ""}`}>{p.title}</div>
+        <div className={`font-data text-[11px] ${style.meta} ${p.layout === "grid" ? "truncate" : ""}`}>
           {start.toFormat("h:mm")}–{end.toFormat("h:mm a")}
         </div>
       </button>

@@ -5,6 +5,7 @@ import { createHabit } from "@/app/actions/habits";
 import { createFixedBlock } from "@/app/actions/fixedBlocks";
 import { createReminder } from "@/app/actions/reminders";
 import { deleteCalendarItem, type DeletableKind } from "@/app/actions/deleteItems";
+import { updateCalendarItem, type UpdatePatch } from "@/app/actions/updateItems";
 import { buildGrid } from "@/lib/scheduler/buildGrid";
 import { mergeBySource } from "@/lib/scheduler/grid";
 import { createClient } from "@/lib/supabase/server";
@@ -131,6 +132,37 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "update_calendar_item",
+    description:
+      "Change an existing task, habit, fixed commitment, or reminder in place (new time, new days, new title, new duration, new deadline). Get the id from list_calendar_items first. Only send the fields that change. A fixed commitment is re-checked for overlaps; anything that affects the schedule is re-solved and the result says when things now land.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["task", "habit", "fixed_block", "reminder"] },
+        id: { type: "string" },
+        title: { type: "string" },
+        startsAt: { type: "string", description: "fixed_block: local datetime YYYY-MM-DDTHH:mm of the (first) occurrence" },
+        endsAt: { type: "string", description: "fixed_block: local datetime YYYY-MM-DDTHH:mm" },
+        repeatsOnDays: { type: "array", items: { type: "string", enum: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] }, description: "fixed_block: full new list of weekdays; empty array = one-off" },
+        location: { type: "string" },
+        estimatedMinutes: { type: "integer", description: "task" },
+        deadline: { type: "string", description: "task: local datetime, or empty string for no deadline" },
+        priority: { type: "integer", minimum: 1, maximum: 5, description: "task" },
+        durationMinutes: { type: "integer", description: "habit" },
+        targetSessionsPerWeek: { type: "integer", description: "habit" },
+        minSpacingHours: { type: "integer", description: "habit" },
+        earliestTime: { type: "string", description: "habit: HH:mm" },
+        latestTime: { type: "string", description: "habit: HH:mm" },
+        reminderKind: { type: "string", enum: ["moment", "window", "latent"], description: "reminder" },
+        dueAt: { type: "string", description: "reminder: local datetime" },
+        windowStart: { type: "string", description: "reminder: local datetime" },
+        windowEnd: { type: "string", description: "reminder: local datetime" },
+        importance: { type: "integer", minimum: 1, maximum: 5, description: "reminder" },
+      },
+      required: ["kind", "id"],
+    },
+  },
+  {
     name: "ask_multiple_choice",
     description:
       "Ask the user a multiple-choice question when you genuinely need more information before acting (an ambiguous time, confirming which of several things they mean). The conversation pauses until they pick an option — don't use this for things you can reasonably infer or that don't matter.",
@@ -207,7 +239,33 @@ export async function executeAgentTool(name: string, input: Record<string, unkno
         start: DateTime.fromJSDate(p.start, { zone: ctx.timezone }).toFormat("ccc LLL d, h:mma"),
         end: DateTime.fromJSDate(p.end, { zone: ctx.timezone }).toFormat("h:mma"),
       }));
-      return JSON.stringify({ weekOf: weekStart.toFormat("LLL d, yyyy"), items });
+      // Free time per day, so "what should I do Wednesday evening" is grounded
+      // in actual gaps rather than guessed from the list of busy items.
+      const freeByDay = new Map<string, { runs: string[]; totalMinutes: number }>();
+      let run: { start: Date; end: Date } | null = null;
+      const flush = () => {
+        if (!run) return;
+        const minutes = (run.end.getTime() - run.start.getTime()) / 60_000;
+        if (minutes >= 30) {
+          const s = DateTime.fromJSDate(run.start, { zone: ctx.timezone });
+          const e = DateTime.fromJSDate(run.end, { zone: ctx.timezone });
+          const key = s.toFormat("ccc LLL d");
+          const entry = freeByDay.get(key) ?? { runs: [], totalMinutes: 0 };
+          entry.runs.push(`${s.toFormat("h:mma")}–${e.toFormat("h:mma")}`);
+          entry.totalMinutes += minutes;
+          freeByDay.set(key, entry);
+        }
+        run = null;
+      };
+      for (const b of blocks) {
+        if (b.state === "free" && b.start >= new Date()) {
+          if (run && run.end.getTime() === b.start.getTime()) run.end = b.end;
+          else { flush(); run = { start: b.start, end: b.end }; }
+        } else flush();
+      }
+      flush();
+      const freeTime = [...freeByDay.entries()].map(([day, v]) => ({ day, free: v.runs, totalFreeHours: Math.round(v.totalMinutes / 6) / 10 }));
+      return JSON.stringify({ weekOf: weekStart.toFormat("LLL d, yyyy"), items, freeTime });
     }
     case "list_calendar_items": {
       const supabase = await createClient();
@@ -231,6 +289,10 @@ export async function executeAgentTool(name: string, input: Record<string, unkno
         })),
         reminders: (reminders.data ?? []).map((r) => ({ id: r.id, title: r.title, kind: r.kind, dueAt: local(r.due_at), windowStart: local(r.window_start), windowEnd: local(r.window_end) })),
       });
+    }
+    case "update_calendar_item": {
+      const { kind, id, ...patch } = input as unknown as { kind: DeletableKind; id: string } & UpdatePatch;
+      return JSON.stringify(await updateCalendarItem(kind, String(id ?? ""), patch));
     }
     case "delete_calendar_item": {
       return JSON.stringify(await deleteCalendarItem(String(input.kind) as DeletableKind, String(input.id ?? "")));
